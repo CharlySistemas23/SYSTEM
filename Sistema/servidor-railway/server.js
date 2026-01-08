@@ -461,24 +461,42 @@ async function startServer() {
         if (!tablesExist) {
             console.log('');
             console.log('🔄 Tablas críticas faltantes - ejecutando migración automática...');
+            console.log('');
             try {
                 const { migrate } = await import('./database/migrate-auto.js');
                 await migrate();
                 console.log('');
                 console.log('✅ Migración automática completada exitosamente');
+                console.log('');
                 
                 // Verificar nuevamente después de la migración
+                console.log('🔍 Verificación final de tablas...');
                 const verifyTables = await checkTablesExist();
                 if (!verifyTables) {
-                    console.warn('⚠️  Algunas tablas aún no existen después de la migración');
-                    console.warn('💡 Ejecuta manualmente: npm run migrate');
+                    console.error('');
+                    console.error('❌ ERROR: Algunas tablas críticas aún no existen después de la migración');
+                    console.error('💡 Ejecuta manualmente desde Railway Console: npm run migrate');
+                    console.error('');
+                    throw new Error('Migración no completada correctamente');
+                } else {
+                    console.log('✅ Todas las tablas críticas verificadas correctamente');
                 }
             } catch (migrateError) {
                 console.error('');
-                console.error('❌ Error en migración automática:', migrateError.message);
-                console.error('💡 Ejecuta manualmente desde Railway Console: npm run migrate');
+                console.error('❌ ERROR CRÍTICO en migración automática');
+                console.error('═══════════════════════════════════════════');
+                console.error('Mensaje:', migrateError.message);
                 console.error('');
-                // Continuar aunque falle la migración
+                console.error('💡 SOLUCIÓN:');
+                console.error('   1. Ve a Railway Dashboard → Tu servicio → Console');
+                console.error('   2. Ejecuta: npm run migrate');
+                console.error('   3. Verifica los logs para ver qué tablas fallaron');
+                console.error('═══════════════════════════════════════════');
+                console.error('');
+                
+                // NO continuar si la migración falló críticamente
+                // El servidor no puede funcionar sin las tablas básicas
+                process.exit(1);
             }
         } else {
             console.log('✅ Base de datos verificada - todas las tablas críticas existen');
