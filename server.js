@@ -20,6 +20,12 @@ import reportsRoutes from './routes/reports.js';
 // Cargar variables de entorno
 dotenv.config();
 
+// Configurar variables por defecto si no están definidas
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'opal_co_jwt_secret_change_in_production_2024';
+process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+process.env.NODE_ENV = process.env.NODE_ENV || 'production';
+process.env.CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
+
 const app = express();
 const server = createServer(app);
 
@@ -27,7 +33,7 @@ const server = createServer(app);
 const io = new Server(server, {
     cors: {
         origin: process.env.CORS_ORIGIN?.split(',') || '*',
-        methods: ['GET', 'POST'],
+        methods: ['GET', 'POST', 'PUT', 'DELETE'],
         credentials: true
     },
     pingTimeout: 60000,
@@ -48,10 +54,7 @@ app.use((req, res, next) => {
     next();
 });
 
-// Inicializar base de datos
-initDatabase();
-
-// Rutas de API
+// Rutas de API (definidas antes de iniciar servidor)
 app.use('/api/auth', authRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/employees', employeesRoutes);
@@ -65,7 +68,8 @@ app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV || 'development'
+        environment: process.env.NODE_ENV || 'development',
+        database: process.env.DATABASE_URL ? 'connected' : 'not configured'
     });
 });
 
@@ -88,6 +92,9 @@ app.get('/', (req, res) => {
     });
 });
 
+// Middleware de manejo de errores (debe ir al final)
+app.use(errorHandler);
+
 // Manejo de WebSockets
 io.use(async (socket, next) => {
     // Autenticación de WebSocket
@@ -100,7 +107,7 @@ io.use(async (socket, next) => {
     // Verificar token (mismo código que en middleware/auth.js)
     try {
         const jwt = await import('jsonwebtoken');
-        const JWT_SECRET = process.env.JWT_SECRET || 'default_secret_change_in_production';
+        const JWT_SECRET = process.env.JWT_SECRET || 'opal_co_jwt_secret_change_in_production_2024';
         const decoded = jwt.default.verify(token, JWT_SECRET);
         
         socket.userId = decoded.userId;
@@ -110,7 +117,7 @@ io.use(async (socket, next) => {
         
         next();
     } catch (error) {
-        console.error('Error verificando token WebSocket:', error);
+        console.error('Error verificando token WebSocket:', error.message);
         return next(new Error('Token inválido'));
     }
 });
@@ -129,7 +136,7 @@ io.on('connection', (socket) => {
         console.log(`❌ Usuario desconectado: ${socket.username} (${socket.branchId})`);
     });
 
-    // Eventos personalizados (si los necesitas)
+    // Eventos personalizados
     socket.on('ping', () => {
         socket.emit('pong', { timestamp: new Date().toISOString() });
     });
@@ -149,28 +156,120 @@ io.on('connection', (socket) => {
     });
 });
 
-// Middleware de manejo de errores (debe ir al final)
-app.use(errorHandler);
+// Función para esperar conexión a BD con reintentos
+async function waitForDatabase(maxRetries = 10, delay = 2000) {
+    const { query } = await import('./config/database.js');
+    
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            await query('SELECT NOW()');
+            return true;
+        } catch (error) {
+            if (i < maxRetries - 1) {
+                console.log(`⏳ Esperando conexión a base de datos... (intento ${i + 1}/${maxRetries})`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                throw error;
+            }
+        }
+    }
+    return false;
+}
 
-// Puerto
-const PORT = process.env.PORT || 3000;
+// Función para verificar si las tablas existen
+async function checkTablesExist() {
+    try {
+        const { query } = await import('./config/database.js');
+        await query('SELECT 1 FROM catalog_branches LIMIT 1');
+        return true;
+    } catch (error) {
+        if (error.code === '42P01' || error.message.includes('does not exist')) {
+            return false;
+        }
+        throw error;
+    }
+}
+
+// Función principal para iniciar servidor
+async function startServer() {
+    try {
+        console.log('🚀 Iniciando servidor OPAL & CO POS Backend...');
+        
+        // Inicializar base de datos
+        initDatabase();
+        
+        // Esperar a que la base de datos esté disponible
+        console.log('📡 Conectando a base de datos...');
+        await waitForDatabase();
+        console.log('✅ Base de datos conectada');
+        
+        // Verificar si las tablas existen
+        const tablesExist = await checkTablesExist();
+        
+        if (!tablesExist) {
+            console.log('🔄 Tablas no encontradas - ejecutando migración automática...');
+            try {
+                const { migrate } = await import('./database/migrate-auto.js');
+                await migrate();
+                console.log('✅ Migración automática completada exitosamente');
+            } catch (migrateError) {
+                console.error('⚠️  Error en migración automática:', migrateError.message);
+                console.log('💡 Nota: El servidor iniciará pero necesitarás ejecutar: npm run migrate');
+                // Continuar aunque falle la migración (puede que el usuario la ejecute manualmente)
+            }
+        } else {
+            console.log('✅ Base de datos verificada - tablas existentes');
+        }
+        
+        // Iniciar servidor HTTP
+        const PORT = process.env.PORT || 3000;
+        server.listen(PORT, () => {
+            console.log('');
+            console.log('═══════════════════════════════════════════');
+            console.log('✅ SERVIDOR INICIADO EXITOSAMENTE');
+            console.log('═══════════════════════════════════════════');
+            console.log(`📍 Puerto: ${PORT}`);
+            console.log(`🌐 Ambiente: ${process.env.NODE_ENV}`);
+            console.log(`📡 WebSockets: Habilitado`);
+            console.log(`🔐 JWT: ${process.env.JWT_SECRET !== 'opal_co_jwt_secret_change_in_production_2024' ? '✅ Configurado' : '⚠️  Usando default (configura JWT_SECRET)'}`);
+            console.log(`🗄️  Base de Datos: ${process.env.DATABASE_URL ? '✅ Configurada' : '⚠️  NO CONFIGURADA'}`);
+            console.log(`🌍 CORS: ${process.env.CORS_ORIGIN || '* (todos)'}`);
+            console.log('═══════════════════════════════════════════');
+            console.log('');
+        });
+    } catch (error) {
+        console.error('');
+        console.error('❌ ERROR CRÍTICO INICIANDO SERVIDOR');
+        console.error('═══════════════════════════════════════════');
+        console.error('Mensaje:', error.message);
+        if (error.code) {
+            console.error('Código:', error.code);
+        }
+        console.error('');
+        console.error('💡 Verifica:');
+        console.error('   1. Que DATABASE_URL esté configurada en Railway');
+        console.error('   2. Que PostgreSQL esté conectado al proyecto');
+        console.error('   3. Revisa los logs de Railway para más detalles');
+        console.error('═══════════════════════════════════════════');
+        console.error('');
+        
+        // Intentar iniciar el servidor de todas formas (puede que solo falte migración)
+        const PORT = process.env.PORT || 3000;
+        server.listen(PORT, () => {
+            console.log(`⚠️  Servidor iniciado en puerto ${PORT} pero puede tener problemas de conexión`);
+        });
+    }
+}
 
 // Iniciar servidor
-server.listen(PORT, () => {
-    console.log('🚀 Servidor iniciado');
-    console.log(`📍 Puerto: ${PORT}`);
-    console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`📡 WebSockets: Habilitado`);
-    console.log(`🔐 JWT Secret: ${process.env.JWT_SECRET ? 'Configurado' : '⚠️  NO CONFIGURADO'}`);
-    console.log(`🗄️  Base de Datos: ${process.env.DATABASE_URL ? 'Configurada' : '⚠️  NO CONFIGURADA'}`);
-});
+startServer();
 
 // Manejo de errores no capturados
 process.on('unhandledRejection', (error) => {
-    console.error('❌ Unhandled Rejection:', error);
+    console.error('❌ Unhandled Rejection:', error.message);
 });
 
 process.on('uncaughtException', (error) => {
-    console.error('❌ Uncaught Exception:', error);
+    console.error('❌ Uncaught Exception:', error.message);
     process.exit(1);
 });
