@@ -8,9 +8,28 @@ import { query } from '../config/database.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Orden de creación de tablas según dependencias (sin FK primero, luego con FK)
+const TABLE_ORDER = [
+    'catalog_branches',  // Sin dependencias
+    'users',             // Depende de catalog_branches
+    'employees',         // Depende de catalog_branches
+    'customers',         // Depende de catalog_branches
+    'catalog_sellers',   // Depende de catalog_branches
+    'catalog_guides',    // Depende de catalog_branches
+    'catalog_agencies',  // Depende de catalog_branches
+    'sales',             // Depende de catalog_branches
+    'sale_items',        // Depende de sales
+    'sale_payments',     // Depende de sales
+    'inventory_items',   // Depende de catalog_branches
+    'commission_rules',  // Depende de catalog_branches
+    'cost_entries',      // Depende de catalog_branches
+    'cash_sessions',     // Depende de catalog_branches y employees
+];
+
 export async function migrate() {
     try {
         console.log('🔄 Iniciando migración automática de base de datos...');
+        console.log('');
 
         // Leer archivo SQL
         const sqlPath = path.join(__dirname, 'schema.sql');
@@ -20,88 +39,169 @@ export async function migrate() {
 
         const sql = fs.readFileSync(sqlPath, 'utf8');
 
-        // Dividir en statements individuales
-        // PostgreSQL necesita ejecutar cada statement por separado
-        let allStatements = sql
-            .split(';')
-            .map(s => s.trim())
-            .filter(s => {
-                // Filtrar comentarios y líneas vacías
-                const trimmed = s.trim();
-                return trimmed.length > 0 && 
-                       !trimmed.startsWith('--') && 
-                       !trimmed.startsWith('/*') &&
-                       trimmed !== '';
-            })
-            .filter(s => s.length >= 10); // Filtrar statements muy cortos
+        // Función mejorada para extraer statements SQL
+        function extractSQLStatements(sqlText) {
+            const statements = [];
+            let currentStatement = '';
+            let inComment = false;
+            
+            const lines = sqlText.split('\n');
+            
+            for (let line of lines) {
+                // Manejar comentarios de línea (--)
+                if (line.trim().startsWith('--')) {
+                    continue;
+                }
+                
+                // Manejar comentarios de bloque (/* ... */)
+                const blockCommentStart = line.indexOf('/*');
+                const blockCommentEnd = line.indexOf('*/');
+                
+                if (blockCommentStart !== -1) {
+                    if (blockCommentEnd !== -1) {
+                        line = line.substring(0, blockCommentStart) + line.substring(blockCommentEnd + 2);
+                    } else {
+                        inComment = true;
+                        line = line.substring(0, blockCommentStart);
+                    }
+                } else if (inComment && blockCommentEnd !== -1) {
+                    inComment = false;
+                    line = line.substring(blockCommentEnd + 2);
+                } else if (inComment) {
+                    continue;
+                }
+                
+                currentStatement += line + '\n';
+                
+                if (line.trim().endsWith(';')) {
+                    const trimmed = currentStatement.trim();
+                    if (trimmed.length > 10 && !trimmed.startsWith('--')) {
+                        statements.push(trimmed);
+                    }
+                    currentStatement = '';
+                }
+            }
+            
+            if (currentStatement.trim().length > 10) {
+                statements.push(currentStatement.trim());
+            }
+            
+            return statements;
+        }
+
+        const allStatements = extractSQLStatements(sql);
 
         // Separar CREATE TABLE y CREATE INDEX
-        const createTables = allStatements.filter(s => s.toUpperCase().startsWith('CREATE TABLE'));
-        const createIndexes = allStatements.filter(s => s.toUpperCase().startsWith('CREATE INDEX'));
+        const createTables = allStatements.filter(s => s.toUpperCase().trim().startsWith('CREATE TABLE'));
+        const createIndexes = allStatements.filter(s => s.toUpperCase().trim().startsWith('CREATE INDEX'));
         
-        console.log(`📝 Encontrados ${createTables.length} tablas y ${createIndexes.length} índices para crear...`);
+        console.log(`📝 Encontrados ${createTables.length} tablas y ${createIndexes.length} índices para procesar...`);
+        console.log('');
 
         let successCount = 0;
         let skippedCount = 0;
         let errorCount = 0;
 
-        // PRIMERO: Crear todas las tablas
+        // Crear un mapa de tablas por nombre
+        const tablesMap = new Map();
+        createTables.forEach(stmt => {
+            const match = stmt.match(/CREATE TABLE IF NOT EXISTS (\w+)/i);
+            if (match) {
+                tablesMap.set(match[1], stmt);
+            }
+        });
+
+        // PRIMERO: Crear tablas en el orden correcto de dependencias
+        console.log('📋 Fase 1: Creando tablas (en orden de dependencias)...');
         console.log('');
-        console.log('📋 Fase 1: Creando tablas...');
-        for (let i = 0; i < createTables.length; i++) {
-            const statement = createTables[i];
-            const tableName = statement.match(/CREATE TABLE IF NOT EXISTS (\w+)/i)?.[1] || 'desconocida';
+        
+        for (const tableName of TABLE_ORDER) {
+            const statement = tablesMap.get(tableName);
+            if (!statement) {
+                console.log(`   ⚠️  Tabla ${tableName} no encontrada en schema.sql, saltando...`);
+                continue;
+            }
             
             try {
                 await query(statement);
                 successCount++;
                 console.log(`   ✅ Tabla creada: ${tableName}`);
             } catch (error) {
-                // Ignorar errores de "ya existe"
                 if (error.code === '42P07' || error.message.includes('already exists')) {
                     skippedCount++;
                     console.log(`   ⏭️  Tabla ya existe: ${tableName}`);
                 } else {
                     errorCount++;
                     console.error(`   ❌ Error creando tabla ${tableName}:`, error.message);
-                    // Continuar con el siguiente
+                    if (error.code === '42P01' && error.message.includes('does not exist')) {
+                        console.error(`   ⚠️  ERROR CRÍTICO: La tabla ${tableName} requiere una tabla que no existe`);
+                        throw error;
+                    }
                 }
             }
         }
 
-        // SEGUNDO: Crear todos los índices (después de que las tablas existan)
+        // Crear cualquier tabla que no esté en TABLE_ORDER
+        console.log('');
+        console.log('📋 Creando tablas adicionales...');
+        for (const [tableName, statement] of tablesMap.entries()) {
+            if (!TABLE_ORDER.includes(tableName)) {
+                try {
+                    await query(statement);
+                    successCount++;
+                    console.log(`   ✅ Tabla creada: ${tableName}`);
+                } catch (error) {
+                    if (error.code === '42P07' || error.message.includes('already exists')) {
+                        skippedCount++;
+                        console.log(`   ⏭️  Tabla ya existe: ${tableName}`);
+                    } else {
+                        errorCount++;
+                        console.error(`   ❌ Error creando tabla ${tableName}:`, error.message);
+                    }
+                }
+            }
+        }
+
+        // SEGUNDO: Crear todos los índices
         console.log('');
         console.log('📋 Fase 2: Creando índices...');
+        console.log('');
+        
+        let indexCount = 0;
         for (let i = 0; i < createIndexes.length; i++) {
             const statement = createIndexes[i];
-            const indexName = statement.match(/CREATE INDEX IF NOT EXISTS (\w+)/i)?.[1] || 'desconocido';
+            const indexName = statement.match(/CREATE INDEX IF NOT EXISTS (\w+)/i)?.[1] || `idx_${i}`;
             
             try {
                 await query(statement);
                 successCount++;
-                // Log solo algunos índices para no saturar
-                if (i < 5 || i === createIndexes.length - 1) {
+                indexCount++;
+                if (i < 3 || i === createIndexes.length - 1) {
                     console.log(`   ✅ Índice creado: ${indexName}`);
+                } else if (i === 3) {
+                    console.log(`   ... creando ${createIndexes.length - 3} índices más ...`);
                 }
             } catch (error) {
-                // Ignorar errores de "ya existe" o "tabla no existe" (si la tabla aún no se creó)
                 if (error.code === '42P07' || 
                     error.code === '42710' ||
-                    error.code === '42P01' || // relation does not exist
                     error.message.includes('already exists') || 
                     error.message.includes('duplicate key')) {
                     skippedCount++;
-                    // Solo log si es error de "ya existe", no si es "tabla no existe"
-                    if (!error.message.includes('does not exist')) {
-                        console.log(`   ⏭️  Índice ya existe: ${indexName}`);
-                    }
+                } else if (error.code === '42P01' || error.message.includes('does not exist')) {
+                    errorCount++;
+                    console.error(`   ⚠️  Índice ${indexName}: tabla referenciada no existe`);
                 } else {
                     errorCount++;
                     console.error(`   ❌ Error creando índice ${indexName}:`, error.message);
                 }
             }
         }
+        
+        if (indexCount > 0) {
+            console.log(`   ✅ Total de índices procesados: ${indexCount}`);
+        }
 
+        // Resumen final
         console.log('');
         console.log('═══════════════════════════════════════════');
         console.log('✅ MIGRACIÓN COMPLETADA');
@@ -109,9 +209,33 @@ export async function migrate() {
         console.log(`   ✅ Exitosos: ${successCount}`);
         console.log(`   ⏭️  Omitidos (ya existían): ${skippedCount}`);
         if (errorCount > 0) {
-            console.log(`   ❌ Errores: ${errorCount}`);
+            console.log(`   ⚠️  Errores no críticos: ${errorCount}`);
         }
         console.log('═══════════════════════════════════════════');
+        console.log('');
+
+        // Verificar que las tablas críticas existan
+        console.log('🔍 Verificando tablas críticas...');
+        const { query: verifyQuery } = await import('../config/database.js');
+        const criticalTables = ['catalog_branches', 'users', 'employees'];
+        let allCriticalExist = true;
+        
+        for (const tableName of criticalTables) {
+            try {
+                await verifyQuery(`SELECT 1 FROM ${tableName} LIMIT 1`);
+                console.log(`   ✅ ${tableName} existe`);
+            } catch (error) {
+                console.error(`   ❌ ${tableName} NO existe`);
+                allCriticalExist = false;
+            }
+        }
+        
+        if (!allCriticalExist) {
+            throw new Error('Algunas tablas críticas no se crearon correctamente');
+        }
+        
+        console.log('');
+        console.log('✅ Todas las tablas críticas verificadas');
         console.log('');
 
         return true;
@@ -123,9 +247,13 @@ export async function migrate() {
         if (error.code) {
             console.error('Código:', error.code);
         }
+        if (error.stack) {
+            console.error('Stack:', error.stack);
+        }
         console.error('');
-        console.error('💡 Si el error persiste, ejecuta manualmente:');
-        console.error('   npm run migrate');
+        console.error('💡 Si el error persiste:');
+        console.error('   1. Verifica que DATABASE_URL esté configurada en Railway');
+        console.error('   2. Ejecuta manualmente desde Railway Console: npm run migrate');
         console.error('═══════════════════════════════════════════');
         console.error('');
         throw error;
