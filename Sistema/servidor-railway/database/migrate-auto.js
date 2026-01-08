@@ -22,7 +22,7 @@ export async function migrate() {
 
         // Dividir en statements individuales
         // PostgreSQL necesita ejecutar cada statement por separado
-        const statements = sql
+        let allStatements = sql
             .split(';')
             .map(s => s.trim())
             .filter(s => {
@@ -32,43 +32,72 @@ export async function migrate() {
                        !trimmed.startsWith('--') && 
                        !trimmed.startsWith('/*') &&
                        trimmed !== '';
-            });
+            })
+            .filter(s => s.length >= 10); // Filtrar statements muy cortos
 
-        console.log(`📝 Ejecutando ${statements.length} statements...`);
+        // Separar CREATE TABLE y CREATE INDEX
+        const createTables = allStatements.filter(s => s.toUpperCase().startsWith('CREATE TABLE'));
+        const createIndexes = allStatements.filter(s => s.toUpperCase().startsWith('CREATE INDEX'));
+        
+        console.log(`📝 Encontrados ${createTables.length} tablas y ${createIndexes.length} índices para crear...`);
 
         let successCount = 0;
         let skippedCount = 0;
         let errorCount = 0;
 
-        for (let i = 0; i < statements.length; i++) {
-            const statement = statements[i];
+        // PRIMERO: Crear todas las tablas
+        console.log('');
+        console.log('📋 Fase 1: Creando tablas...');
+        for (let i = 0; i < createTables.length; i++) {
+            const statement = createTables[i];
+            const tableName = statement.match(/CREATE TABLE IF NOT EXISTS (\w+)/i)?.[1] || 'desconocida';
             
-            // Saltar statements muy cortos (probablemente solo espacios)
-            if (statement.length < 10) {
-                continue;
-            }
-
             try {
                 await query(statement);
                 successCount++;
-                
-                // Log cada 10 statements para no saturar la consola
-                if ((i + 1) % 10 === 0 || i === statements.length - 1) {
-                    console.log(`✅ Progreso: ${i + 1}/${statements.length} statements procesados`);
-                }
+                console.log(`   ✅ Tabla creada: ${tableName}`);
             } catch (error) {
-                // Ignorar errores de "ya existe" (CREATE TABLE IF NOT EXISTS, CREATE INDEX IF NOT EXISTS)
-                if (error.code === '42P07' || 
-                    error.code === '42710' ||
-                    error.message.includes('already exists') ||
-                    error.message.includes('duplicate key')) {
+                // Ignorar errores de "ya existe"
+                if (error.code === '42P07' || error.message.includes('already exists')) {
                     skippedCount++;
-                    // Silenciar estos errores, son normales en migraciones
+                    console.log(`   ⏭️  Tabla ya existe: ${tableName}`);
                 } else {
                     errorCount++;
-                    console.error(`❌ Error en statement ${i + 1}:`, error.message);
-                    console.error(`   SQL: ${statement.substring(0, 100)}...`);
-                    // Continuar con el siguiente statement en lugar de fallar completamente
+                    console.error(`   ❌ Error creando tabla ${tableName}:`, error.message);
+                    // Continuar con el siguiente
+                }
+            }
+        }
+
+        // SEGUNDO: Crear todos los índices (después de que las tablas existan)
+        console.log('');
+        console.log('📋 Fase 2: Creando índices...');
+        for (let i = 0; i < createIndexes.length; i++) {
+            const statement = createIndexes[i];
+            const indexName = statement.match(/CREATE INDEX IF NOT EXISTS (\w+)/i)?.[1] || 'desconocido';
+            
+            try {
+                await query(statement);
+                successCount++;
+                // Log solo algunos índices para no saturar
+                if (i < 5 || i === createIndexes.length - 1) {
+                    console.log(`   ✅ Índice creado: ${indexName}`);
+                }
+            } catch (error) {
+                // Ignorar errores de "ya existe" o "tabla no existe" (si la tabla aún no se creó)
+                if (error.code === '42P07' || 
+                    error.code === '42710' ||
+                    error.code === '42P01' || // relation does not exist
+                    error.message.includes('already exists') || 
+                    error.message.includes('duplicate key')) {
+                    skippedCount++;
+                    // Solo log si es error de "ya existe", no si es "tabla no existe"
+                    if (!error.message.includes('does not exist')) {
+                        console.log(`   ⏭️  Índice ya existe: ${indexName}`);
+                    }
+                } else {
+                    errorCount++;
+                    console.error(`   ❌ Error creando índice ${indexName}:`, error.message);
                 }
             }
         }
