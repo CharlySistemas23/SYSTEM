@@ -103,7 +103,53 @@ app.use((req, res, next) => {
     next();
 });
 
-// Rutas de API (definidas antes de iniciar servidor)
+// Buscar carpeta frontend ANTES de configurar rutas
+console.log('');
+console.log('🔍 Buscando carpeta frontend...');
+console.log(`   __dirname: ${__dirname}`);
+console.log(`   process.cwd(): ${process.cwd()}`);
+
+const possiblePaths = [
+    path.join(__dirname, 'frontend'),              // servidor-railway/frontend (dentro del proyecto) - PRIORIDAD 1
+    path.join(process.cwd(), 'frontend'),          // Desde el directorio de trabajo actual - PRIORIDAD 2
+    path.join(__dirname, '..', 'frontend'),        // Sistema/frontend (mismo nivel) - PRIORIDAD 3
+    path.join(process.cwd(), '..', 'frontend'),    // Un nivel arriba desde cwd - PRIORIDAD 4
+    path.join(__dirname, '..', '..', 'frontend')   // Dos niveles arriba - PRIORIDAD 5
+];
+
+let frontendPath = null;
+for (let i = 0; i < possiblePaths.length; i++) {
+    const testPath = possiblePaths[i];
+    console.log(`   Probando: ${testPath}`);
+    if (existsSync(testPath)) {
+        console.log(`      ✓ Carpeta existe`);
+        const indexPath = path.join(testPath, 'index.html');
+        if (existsSync(indexPath)) {
+            console.log(`      ✓ index.html encontrado`);
+            frontendPath = testPath;
+            console.log(`✅ Carpeta frontend encontrada en: ${frontendPath}`);
+            break;
+        } else {
+            console.log(`      ✗ index.html no encontrado`);
+        }
+    } else {
+        console.log(`      ✗ Carpeta no existe`);
+    }
+}
+
+if (!frontendPath) {
+    console.warn(`⚠️  AVISO: No se encontró la carpeta frontend en ninguna de estas ubicaciones:`);
+    possiblePaths.forEach(p => console.warn(`   - ${p}`));
+    console.warn(`   El frontend no se servirá desde este servidor.`);
+    console.warn(`   💡 Solución: Asegúrate de que la carpeta 'frontend' esté disponible en Railway.`);
+    console.warn(`   Opciones:`);
+    console.warn(`   1. Verificar que servidor-railway/frontend/ existe en el repositorio`);
+    console.warn(`   2. Verificar que servidor-railway/frontend/index.html existe`);
+    console.warn(`   3. Verificar que la carpeta frontend no esté en .gitignore`);
+}
+console.log('');
+
+// Rutas de API (definidas antes de servir archivos estáticos)
 app.use('/api/auth', authRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/employees', employeesRoutes);
@@ -142,33 +188,6 @@ app.get('/api/info', (req, res) => {
 });
 
 // Servir archivos estáticos del frontend
-// Intentar encontrar frontend en diferentes ubicaciones posibles
-const possiblePaths = [
-    path.join(__dirname, '..', 'frontend'),        // Sistema/frontend (mismo nivel)
-    path.join(__dirname, 'frontend'),              // servidor-railway/frontend (dentro del proyecto)
-    path.join(__dirname, '..', '..', 'frontend'),  // Un nivel más arriba
-    path.join(process.cwd(), 'frontend'),          // Desde el directorio de trabajo actual
-    path.join(process.cwd(), '..', 'frontend')     // Un nivel arriba desde cwd
-];
-
-let frontendPath = null;
-for (const testPath of possiblePaths) {
-    if (existsSync(testPath) && existsSync(path.join(testPath, 'index.html'))) {
-        frontendPath = testPath;
-        console.log(`✅ Carpeta frontend encontrada en: ${frontendPath}`);
-        break;
-    }
-}
-
-if (!frontendPath) {
-    console.warn(`⚠️  AVISO: No se encontró la carpeta frontend en ninguna de estas ubicaciones:`);
-    possiblePaths.forEach(p => console.warn(`   - ${p}`));
-    console.warn(`   El frontend no se servirá desde este servidor.`);
-    console.warn(`   💡 Solución: Asegúrate de que la carpeta 'frontend' esté disponible en Railway.`);
-    console.warn(`   Opciones:`);
-    console.warn(`   1. Copiar frontend dentro de servidor-railway/`);
-    console.warn(`   2. Configurar Railway para desplegar desde la carpeta 'sistema/' en lugar de 'servidor-railway/'`);
-}
 
 // Solo servir archivos estáticos si encontramos el frontend
 if (frontendPath) {
@@ -184,13 +203,29 @@ if (frontendPath) {
 
 // Ruta raíz: servir index.html del frontend
 app.get('/', (req, res) => {
-    if (!frontendPath) {
+    if (frontendPath) {
+        const indexPath = path.resolve(frontendPath, 'index.html');
+        if (existsSync(indexPath)) {
+            res.sendFile(indexPath);
+        } else {
+            console.error(`❌ index.html no existe en: ${indexPath}`);
+            res.json({
+                name: 'OPAL & CO POS Backend',
+                version: '1.0.0',
+                description: 'Servidor centralizado multi-tenant con tiempo real',
+                error: 'Frontend index.html no encontrado en la ruta esperada.',
+                frontendPath: frontendPath,
+                indexPath: indexPath
+            });
+        }
+    } else {
         // Frontend no encontrado - mostrar información del API
         res.json({
             name: 'OPAL & CO POS Backend',
             version: '1.0.0',
             description: 'Servidor centralizado multi-tenant con tiempo real',
             error: 'Frontend no encontrado. Verifica que la carpeta frontend esté disponible.',
+            searchedPaths: possiblePaths,
             endpoints: {
                 auth: '/api/auth',
                 sales: '/api/sales',
