@@ -121,13 +121,15 @@ async function fixAdmin() {
         const updates = {};
         
         if (!adminUser.pin_hash) {
-            console.log('⚠️  PIN hash faltante. Generando...');
+            console.log('⚠️  PIN hash faltante. Generando PIN: 1234...');
             updates.pin_hash = await bcrypt.hash('1234', 10);
             needsUpdate = true;
         }
         
+        // Nota: password_hash existe en la BD pero no se usa en el flujo de login normal
+        // Solo se verifica/corrige si falta (por compatibilidad)
         if (!adminUser.password_hash) {
-            console.log('⚠️  Password hash faltante. Generando...');
+            console.log('⚠️  Password hash faltante. Generando (no se usa en login)...');
             updates.password_hash = await bcrypt.hash('admin123', 10);
             needsUpdate = true;
         }
@@ -176,10 +178,14 @@ async function fixAdmin() {
         console.log('✅ DIAGNÓSTICO COMPLETADO');
         console.log('═══════════════════════════════════════════');
         console.log('');
-        console.log('📋 CREDENCIALES DEL USUARIO ADMIN:');
-        console.log('   Username: admin');
-        console.log('   Password: admin123');
-        console.log('   PIN: 1234');
+        console.log('📋 CREDENCIALES PARA LOGIN:');
+        console.log('');
+        console.log('   1️⃣  CÓDIGO DE EMPRESA (primera pantalla):');
+        console.log('      Código: OPAL2024');
+        console.log('');
+        console.log('   2️⃣  USUARIO Y PIN (segunda pantalla):');
+        console.log('      Usuario: admin');
+        console.log('      PIN: 1234');
         console.log('');
         console.log('📊 ESTADO FINAL:');
         console.log(`   ✅ Usuario existe: ${adminUser ? 'Sí' : 'No'}`);
@@ -188,9 +194,11 @@ async function fixAdmin() {
         console.log(`   ✅ Empleado activo: ${employee?.active ? 'Sí' : 'No'}`);
         console.log(`   ✅ Sucursal: ${branch?.name || 'No'}`);
         console.log(`   ✅ Tiene PIN hash: ${adminUser?.pin_hash ? 'Sí' : 'No'}`);
-        console.log(`   ✅ Tiene Password hash: ${adminUser?.password_hash ? 'Sí' : 'No'}`);
         console.log('');
-        console.log('💡 Prueba hacer login con: admin / 1234');
+        console.log('💡 PASOS PARA LOGIN:');
+        console.log('   1. Ingresa el código de empresa: OPAL2024');
+        console.log('   2. Ingresa el usuario: admin');
+        console.log('   3. Ingresa el PIN: 1234');
         console.log('═══════════════════════════════════════════');
         console.log('');
         
