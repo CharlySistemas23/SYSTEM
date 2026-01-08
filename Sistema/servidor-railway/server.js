@@ -36,62 +36,78 @@ process.env.CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const app = express();
 const server = createServer(app);
 
+// Función helper para verificar origen permitido
+const isOriginAllowed = (origin) => {
+    if (!origin || origin === 'null') return true;
+    
+    const corsOrigin = process.env.CORS_ORIGIN || '*';
+    const allowedOrigins = corsOrigin.split(',').map(o => o.trim());
+    
+    // Si está permitido * o el origen está en la lista
+    if (allowedOrigins.includes('*')) return true;
+    if (allowedOrigins.includes(origin)) return true;
+    
+    // Permitir cualquier dominio .vercel.app, .netlify.app, etc.
+    if (origin.includes('.vercel.app') || origin.includes('.netlify.app')) {
+        return true;
+    }
+    
+    return false;
+};
+
+// IMPORTANTE: Manejar preflight OPTIONS ANTES de cualquier otro middleware
+// Esto debe ir ANTES de app.use(cors) para que funcione correctamente
+app.options('*', (req, res) => {
+    const origin = req.headers.origin;
+    
+    if (isOriginAllowed(origin)) {
+        res.header('Access-Control-Allow-Origin', origin || '*');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+        res.header('Access-Control-Allow-Credentials', 'true');
+        res.header('Access-Control-Max-Age', '86400'); // 24 horas
+        res.sendStatus(200);
+    } else {
+        res.sendStatus(403);
+    }
+});
+
+// Middleware CORS - Configuración mejorada
+app.use(cors({
+    origin: function (origin, callback) {
+        if (isOriginAllowed(origin)) {
+            if (origin && (origin.includes('.vercel.app') || origin.includes('.netlify.app'))) {
+                console.log(`✅ Permitiendo origen: ${origin}`);
+            }
+            callback(null, true);
+        } else {
+            console.warn(`⚠️ Origen no permitido: ${origin}`);
+            callback(new Error(`Origen ${origin} no permitido por CORS`));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    maxAge: 86400 // 24 horas para preflight cache
+}));
+
 // Configurar Socket.io para WebSockets
 const io = new Server(server, {
     cors: {
         origin: function (origin, callback) {
-            // Permitir requests sin origin (archivos locales file://, Postman, etc.)
-            // 'null' es el valor que el navegador envía cuando se abre desde file://
-            if (!origin || origin === 'null') {
-                return callback(null, true);
-            }
-            
-            const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['*'];
-            
-            if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+            if (isOriginAllowed(origin)) {
                 callback(null, true);
             } else {
                 callback(new Error('Not allowed by CORS'));
             }
         },
-        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
         credentials: true
     },
     pingTimeout: 60000,
     pingInterval: 25000
-});
-
-// Middleware
-app.use(cors({
-    origin: function (origin, callback) {
-        // Permitir requests sin origin (archivos locales file://, Postman, etc.)
-        // 'null' es el valor que el navegador envía cuando se abre desde file://
-        if (!origin || origin === 'null') {
-            return callback(null, true);
-        }
-        
-        // Si CORS_ORIGIN está configurado, verificar contra la lista
-        const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['*'];
-        
-        if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    exposedHeaders: ['Content-Range', 'X-Content-Range']
-}));
-// Manejar preflight OPTIONS requests explícitamente
-app.options('*', (req, res) => {
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.sendStatus(200);
 });
 
 app.use(express.json({ limit: '10mb' }));
