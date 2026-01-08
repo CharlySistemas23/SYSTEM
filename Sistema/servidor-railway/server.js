@@ -55,33 +55,66 @@ const isOriginAllowed = (origin) => {
     return false;
 };
 
-// IMPORTANTE: Manejar preflight OPTIONS ANTES de cualquier otro middleware
-// Esto debe ir ANTES de app.use(cors) para que funcione correctamente
+// CRÍTICO: Manejar preflight OPTIONS PRIMERO - antes de cualquier otro middleware
+// Express procesa las rutas en orden, así que esto debe ir ANTES de app.use()
 app.options('*', (req, res) => {
     const origin = req.headers.origin;
     
+    console.log(`🔍 OPTIONS preflight desde: ${origin} para ${req.path}`);
+    
     if (isOriginAllowed(origin)) {
-        res.header('Access-Control-Allow-Origin', origin || '*');
-        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
-        res.header('Access-Control-Allow-Credentials', 'true');
-        res.header('Access-Control-Max-Age', '86400'); // 24 horas
+        if (origin) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+        } else {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+        }
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Max-Age', '86400');
+        console.log(`✅ OPTIONS: Headers CORS enviados para ${origin}`);
         res.sendStatus(200);
     } else {
+        console.warn(`⚠️ OPTIONS: Origen no permitido: ${origin}`);
         res.sendStatus(403);
     }
 });
 
-// Middleware CORS - Configuración mejorada
+// Middleware CORS personalizado - Agregar headers a TODAS las respuestas
+// Este middleware DEBE ejecutarse en TODAS las peticiones
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    
+    // SIEMPRE agregar headers CORS si el origen está permitido
+    if (isOriginAllowed(origin)) {
+        // Agregar headers CORS a todas las respuestas
+        if (origin) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+        } else {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+        }
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Max-Age', '86400'); // 24 horas
+        
+        if (origin && (origin.includes('.vercel.app') || origin.includes('.netlify.app'))) {
+            console.log(`✅ CORS: Permitiendo origen: ${origin} para ${req.method} ${req.path}`);
+        }
+    } else {
+        console.warn(`⚠️ CORS: Origen no permitido: ${origin} para ${req.method} ${req.path}`);
+    }
+    
+    next();
+});
+
+// Middleware CORS adicional usando el paquete cors (como respaldo)
 app.use(cors({
     origin: function (origin, callback) {
         if (isOriginAllowed(origin)) {
-            if (origin && (origin.includes('.vercel.app') || origin.includes('.netlify.app'))) {
-                console.log(`✅ Permitiendo origen: ${origin}`);
-            }
             callback(null, true);
         } else {
-            console.warn(`⚠️ Origen no permitido: ${origin}`);
+            console.warn(`⚠️ CORS: Origen rechazado: ${origin}`);
             callback(new Error(`Origen ${origin} no permitido por CORS`));
         }
     },
@@ -89,7 +122,7 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    maxAge: 86400 // 24 horas para preflight cache
+    maxAge: 86400
 }));
 
 // Configurar Socket.io para WebSockets
@@ -116,6 +149,20 @@ app.use(express.urlencoded({ extended: true }));
 // Middleware para agregar io a los requests
 app.use((req, res, next) => {
     req.io = io;
+    next();
+});
+
+// Middleware adicional para asegurar headers CORS en todas las respuestas
+app.use((req, res, next) => {
+    // Asegurar que los headers CORS estén presentes en todas las respuestas
+    const origin = req.headers.origin;
+    if (origin && isOriginAllowed(origin)) {
+        // Si no están los headers, agregarlos
+        if (!res.get('Access-Control-Allow-Origin')) {
+            res.header('Access-Control-Allow-Origin', origin);
+            res.header('Access-Control-Allow-Credentials', 'true');
+        }
+    }
     next();
 });
 
