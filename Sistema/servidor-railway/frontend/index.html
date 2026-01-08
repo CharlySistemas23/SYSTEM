@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Opal & Co - Sistema POS</title>
+    <link rel="stylesheet" href="css/styles.css?v=202512202023">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google API Client Library -->
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client"></script>
+</head>
+<body>
+    <!-- Topbar -->
+    <header class="topbar">
+        <div class="topbar-left">
+            <div class="logo">
+                <img src="assets/logo.png" alt="Opal & Co" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <span style="display:none; font-weight: 600; font-size: 18px;">OPAL & CO</span>
+            </div>
+            <div class="topbar-info">
+                <span id="current-branch" class="branch-name">Tienda 1</span>
+                <span id="branch-selector-container" style="display: none; margin-left: var(--spacing-xs);">
+                    <select id="branch-selector" class="form-select-sm" style="font-size: 11px; padding: 2px 6px; border: 1px solid var(--color-border); border-radius: var(--radius-xs); background: var(--color-bg-card);" onchange="BranchManager.handleBranchChange(this.value)">
+                    </select>
+                </span>
+                <span class="separator">|</span>
+                <span id="current-user" class="user-name">Usuario</span>
+            </div>
+        </div>
+        <div class="topbar-center">
+            <div class="search-global">
+                <input type="text" id="global-search" placeholder="Buscar piezas, clientes, ventas...">
+            </div>
+        </div>
+        <div class="topbar-right">
+            <div class="sync-status" id="sync-status">
+                <span class="status-indicator offline" id="connection-status"></span>
+                <span id="sync-text">Offline</span>
+            </div>
+            <button class="btn-icon" id="sync-now-btn" title="Sincronizar ahora">
+                <i class="fas fa-sync"></i>
+            </button>
+            <button class="btn-icon" id="logout-btn" title="Cerrar sesión">
+                <i class="fas fa-sign-out-alt"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <nav class="sidebar-nav">
+                <!-- Operaciones -->
+                <div class="nav-section">
+                    <div class="nav-section-header cursor-pointer" data-section="operaciones">
+                        <span class="nav-section-icon"><i class="fas fa-chart-pie"></i></span>
+                        <span class="nav-section-label">OPERACIONES</span>
+                        <span class="nav-section-chevron transition-transform duration-300"><i class="fas fa-chevron-down"></i></span>
+                    </div>
+                    <div class="nav-section-items overflow-hidden transition-all duration-300 ease-in-out max-h-96 opacity-100" data-section-items="operaciones">
+                <a href="#" class="nav-item active" data-module="dashboard">
+                    <span class="nav-icon"><i class="fas fa-chart-pie"></i></span>
+                    <span class="nav-label">Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" data-module="pos">
+                    <span class="nav-icon"><i class="fas fa-cash-register"></i></span>
+                    <span class="nav-label">POS</span>
+                </a>
+                        <a href="#" class="nav-item" data-module="cash">
+                            <span class="nav-icon"><i class="fas fa-cash-register"></i></span>
+                            <span class="nav-label">Caja</span>
+                        </a>
+                        <a href="#" class="nav-item" data-module="barcodes">
+                            <span class="nav-icon"><i class="fas fa-barcode"></i></span>
+                            <span class="nav-label">Códigos de Barras</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Inventario -->
+                <div class="nav-section">
+                    <div class="nav-section-header cursor-pointer" data-section="inventario">
+                        <span class="nav-section-icon"><i class="fas fa-box"></i></span>
+                        <span class="nav-section-label">INVENTARIO</span>
+                        <span class="nav-section-chevron transition-transform duration-300"><i class="fas fa-chevron-down"></i></span>
+                    </div>
+                    <div class="nav-section-items overflow-hidden transition-all duration-300 ease-in-out max-h-96 opacity-100" data-section-items="inventario">
+                <a href="#" class="nav-item" data-module="inventory">
+                    <span class="nav-icon"><i class="fas fa-box"></i></span>
+                    <span class="nav-label">Inventario</span>
+                </a>
+                        <a href="#" class="nav-item" data-module="transfers">
+                            <span class="nav-icon"><i class="fas fa-exchange-alt"></i></span>
+                            <span class="nav-label">Transferencias</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Clientes y Servicios -->
+                <div class="nav-section">
+                    <div class="nav-section-header cursor-pointer" data-section="clientes">
+                        <span class="nav-section-icon"><i class="fas fa-users"></i></span>
+                        <span class="nav-section-label">CLIENTES Y SERVICIOS</span>
+                        <span class="nav-section-chevron transition-transform duration-300"><i class="fas fa-chevron-down"></i></span>
+                    </div>
+                    <div class="nav-section-items overflow-hidden transition-all duration-300 ease-in-out max-h-96 opacity-100" data-section-items="clientes">
+                <a href="#" class="nav-item" data-module="customers">
+                    <span class="nav-icon"><i class="fas fa-users"></i></span>
+                    <span class="nav-label">Clientes</span>
+                </a>
+                <a href="#" class="nav-item" data-module="repairs">
+                    <span class="nav-icon"><i class="fas fa-tools"></i></span>
+                    <span class="nav-label">Reparaciones</span>
+                </a>
+                        <a href="#" class="nav-item" data-module="tourist-report">
+                            <span class="nav-icon"><i class="fas fa-plane-arrival"></i></span>
+                            <span class="nav-label">Llegadas</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Administración -->
+                <div class="nav-section">
+                    <div class="nav-section-header cursor-pointer" data-section="administracion">
+                        <span class="nav-section-icon"><i class="fas fa-user-tie"></i></span>
+                        <span class="nav-section-label">ADMINISTRACIÓN</span>
+                        <span class="nav-section-chevron transition-transform duration-300"><i class="fas fa-chevron-down"></i></span>
+                    </div>
+                    <div class="nav-section-items overflow-hidden transition-all duration-300 ease-in-out max-h-96 opacity-100" data-section-items="administracion">
+                <a href="#" class="nav-item" data-module="employees">
+                    <span class="nav-icon"><i class="fas fa-user-tie"></i></span>
+                    <span class="nav-label">Empleados</span>
+                </a>
+                    </div>
+                </div>
+
+                <!-- Análisis y Reportes -->
+                <div class="nav-section">
+                    <div class="nav-section-header cursor-pointer" data-section="analisis">
+                        <span class="nav-section-icon"><i class="fas fa-chart-bar"></i></span>
+                        <span class="nav-section-label">ANÁLISIS Y REPORTES</span>
+                        <span class="nav-section-chevron transition-transform duration-300"><i class="fas fa-chevron-down"></i></span>
+                    </div>
+                    <div class="nav-section-items overflow-hidden transition-all duration-300 ease-in-out max-h-96 opacity-100" data-section-items="analisis">
+                <a href="#" class="nav-item" data-module="reports">
+                    <span class="nav-icon"><i class="fas fa-chart-bar"></i></span>
+                    <span class="nav-label">Reportes</span>
+                </a>
+                <a href="#" class="nav-item" data-module="costs">
+                    <span class="nav-icon"><i class="fas fa-dollar-sign"></i></span>
+                    <span class="nav-label">Costos</span>
+                </a>
+                    </div>
+                </div>
+
+                <!-- Sistema -->
+                <div class="nav-section">
+                    <div class="nav-section-header cursor-pointer" data-section="sistema">
+                        <span class="nav-section-icon"><i class="fas fa-cog"></i></span>
+                        <span class="nav-section-label">SISTEMA</span>
+                        <span class="nav-section-chevron transition-transform duration-300"><i class="fas fa-chevron-down"></i></span>
+                    </div>
+                    <div class="nav-section-items overflow-hidden transition-all duration-300 ease-in-out max-h-96 opacity-100" data-section-items="sistema">
+                <!-- Módulo de sincronización deshabilitado - ya no se necesita (sistema centralizado) -->
+                <!-- <a href="#" class="nav-item" data-module="sync">
+                    <span class="nav-icon"><i class="fas fa-sync"></i></span>
+                    <span class="nav-label">Sincronización</span>
+                </a> -->
+                <a href="#" class="nav-item" data-module="settings">
+                    <span class="nav-icon"><i class="fas fa-cog"></i></span>
+                    <span class="nav-label">Configuración</span>
+                </a>
+                <a href="#" class="nav-item nav-admin-only" data-module="qa" id="nav-qa" style="display: none;">
+                    <span class="nav-icon"><i class="fas fa-flask"></i></span>
+                    <span class="nav-label">QA / Autopruebas</span>
+                </a>
+                    </div>
+                </div>
+            </nav>
+        </aside>
+
+        <!-- Content Area -->
+        <main class="content-area" id="content-area">
+            <!-- Login Screen -->
+            <!-- Pantalla de Código de Acceso de Empresa (PRIMERA - se muestra primero si no está validado) -->
+            <div id="company-code-screen" class="login-screen" style="display: flex;">
+                <div class="login-backdrop"></div>
+                <div class="login-card">
+                    <div class="login-logo">
+                        <img src="assets/logo.png" alt="Opal & Co" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                        <span class="login-logo-text" style="display:none;">OPAL & CO</span>
+                    </div>
+                    <h1>Acceso Restringido</h1>
+                    <p class="login-subtitle">Ingresa el código de acceso de la empresa</p>
+                    <div class="login-divider"></div>
+                    <div class="login-form">
+                        <div class="form-group">
+                            <label>Código de Acceso</label>
+                            <input type="password" id="company-code-input" class="form-input" placeholder="Ingresa el código" autofocus>
+                        </div>
+                        <div id="company-code-error" class="error-message" style="display: none;"></div>
+                        <button class="btn-primary login-btn" id="company-code-btn">
+                            <i class="fas fa-key"></i> Verificar Código
+                        </button>
+                        <div style="margin-top: 15px; font-size: 12px; color: var(--color-text-secondary); text-align: center;">
+                            <label style="display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="remember-company-code" style="cursor: pointer;">
+                                <span>Recordar código en este dispositivo</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pantalla de Login de Usuario (SEGUNDA - se muestra después de validar código de empresa) -->
+            <div id="login-screen" class="login-screen" style="display: none;">
+                <div class="login-backdrop"></div>
+                <div class="login-card">
+                    <div class="login-logo">
+                        <img src="assets/logo.png" alt="Opal & Co" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                        <span class="login-logo-text" style="display:none;">OPAL & CO</span>
+                    </div>
+                    <h1>Opal & Co</h1>
+                    <p class="login-subtitle">Sistema POS</p>
+                    <div class="login-divider"></div>
+                    <div class="login-form">
+                        <div class="form-group">
+                            <label>Usuario</label>
+                            <input type="text" id="employee-barcode-input" class="form-input" placeholder="Ingresa tu usuario o código" autofocus>
+                        </div>
+                        <div class="form-group" id="pin-group">
+                            <label>PIN</label>
+                            <input type="password" id="pin-input" class="form-input" placeholder="••••••" maxlength="6">
+                        </div>
+                        <div id="login-error" class="error-message" style="display: none;"></div>
+                        <button class="btn-primary login-btn" id="login-btn">
+                            <i class="fas fa-sign-in-alt"></i> Iniciar Sesión
+                        </button>
+                    </div>
+                    <div class="login-footer" id="login-help-footer" style="display: none;">
+                        <span class="login-help-link" onclick="if(window.bypassLogin){window.bypassLogin();}">¿Problemas para acceder?</span>
+                    </div>
+                </div>
+                <!-- Hidden button for demo users - only accessible via console -->
+                <button type="button" id="create-demo-users-btn" style="display: none;"></button>
+            </div>
+
+            <!-- Dashboard Module -->
+            <div id="module-dashboard" class="module" style="display: none;">
+                <div class="module-header">
+                    <h2>Dashboard</h2>
+                    <div class="module-actions">
+                        <button class="btn-secondary" id="export-dashboard-btn">Exportar</button>
+                    </div>
+                </div>
+                <div class="dashboard-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-label">Ventas Hoy</div>
+                        <div class="kpi-value" id="kpi-sales-today">$0</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Tickets</div>
+                        <div class="kpi-value" id="kpi-tickets">0</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Ticket Promedio</div>
+                        <div class="kpi-value" id="kpi-avg-ticket">$0</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">% Cierre</div>
+                        <div class="kpi-value" id="kpi-close-rate">0%</div>
+                    </div>
+                </div>
+                <div class="dashboard-section">
+                    <h3>Top Vendedores</h3>
+                    <div id="top-sellers-list" class="top-list"></div>
+                </div>
+                <div class="dashboard-section">
+                    <h3>Alertas</h3>
+                    <div id="alerts-list" class="alerts-list"></div>
+                </div>
+            </div>
+
+            <!-- Barcodes Module -->
+            <div id="module-barcodes" class="module" style="display: none;">
+                <div id="barcodes-tabs" class="tabs-container" style="margin-bottom: var(--spacing-lg);">
+                    <button class="tab-btn active" data-tab="overview"><i class="fas fa-chart-line"></i> Resumen</button>
+                    <button class="tab-btn" data-tab="barcodes"><i class="fas fa-barcode"></i> Códigos</button>
+                    <button class="tab-btn" data-tab="scan-history"><i class="fas fa-history"></i> Historial</button>
+                    <button class="tab-btn" data-tab="templates"><i class="fas fa-file-alt"></i> Plantillas</button>
+                    <button class="tab-btn" data-tab="settings"><i class="fas fa-cog"></i> Configuración</button>
+                </div>
+                <div id="barcodes-content"></div>
+            </div>
+
+            <!-- POS Module - Versión Avanzada -->
+            <div id="module-pos" class="module" style="display: none;">
+                <!-- Header Superior con Info de Venta -->
+                <div class="pos-top-bar">
+                    <div class="pos-top-bar-left">
+                        <h2><i class="fas fa-cash-register"></i> POS - Nueva Venta</h2>
+                        <div class="pos-session-info">
+                            <span class="pos-session-badge" id="pos-session-time">
+                                <i class="fas fa-clock"></i> <span id="pos-clock">00:00:00</span>
+                            </span>
+                            <span class="pos-session-badge" id="pos-sales-count">
+                                <i class="fas fa-receipt"></i> <span id="pos-today-sales">0</span> ventas hoy
+                            </span>
+                        </div>
+                    </div>
+                    <div class="pos-top-bar-right">
+                        <button class="pos-action-btn" id="btn-printer-connect" onclick="window.POS.togglePrinter()" title="Conectar Impresora">
+                            <i class="fas fa-print"></i>
+                        </button>
+                        <button class="pos-action-btn" onclick="window.POS.showFavorites()" title="Favoritos (F2)">
+                            <i class="fas fa-star"></i>
+                        </button>
+                        <button class="pos-action-btn" onclick="window.POS.showPendingSales()" title="Ventas Pendientes (F3)">
+                            <i class="fas fa-pause-circle"></i>
+                            <span class="pos-badge" id="pending-count">0</span>
+                        </button>
+                        <button class="pos-action-btn" onclick="window.POS.showHistory()" title="Historial (F4)">
+                            <i class="fas fa-history"></i>
+                        </button>
+                        <button class="pos-action-btn" onclick="window.POS.toggleFullscreen()" title="Pantalla Completa (F11)">
+                            <i class="fas fa-expand"></i>
+                        </button>
+                        <button class="pos-action-btn pos-help-btn" onclick="window.POS.showShortcuts()" title="Atajos de Teclado (?)">
+                            <i class="fas fa-keyboard"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="pos-container-advanced">
+                    <!-- Panel Izquierdo: Catálogo de Productos -->
+                    <div class="pos-catalog-panel">
+                        <!-- Barra de Búsqueda Avanzada -->
+                        <div class="pos-search-bar">
+                            <div class="pos-search-input-wrapper">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="pos-product-search" class="pos-search-input" 
+                                       placeholder="Buscar por SKU, nombre, código de barras... (F1)" 
+                                       autocomplete="off">
+                                <button class="pos-search-clear" onclick="window.POS.clearSearch()" title="Limpiar">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <button class="pos-scan-btn" onclick="window.POS.startBarcodeScanner()" title="Escanear Código">
+                                <i class="fas fa-barcode"></i>
+                            </button>
+                        </div>
+
+                        <!-- Filtros y Categorías -->
+                        <div class="pos-filters-bar">
+                            <div class="pos-categories-scroll">
+                                <button class="pos-category-chip active" data-category="all">
+                                    <i class="fas fa-gem"></i> Todas
+                                </button>
+                                <button class="pos-category-chip" data-category="anillos">
+                                    <i class="fas fa-ring"></i> Anillos
+                                </button>
+                                <button class="pos-category-chip" data-category="collares">
+                                    <i class="fas fa-link"></i> Collares
+                                </button>
+                                <button class="pos-category-chip" data-category="aretes">
+                                    <i class="fas fa-star-of-life"></i> Aretes
+                                </button>
+                                <button class="pos-category-chip" data-category="pulseras">
+                                    <i class="fas fa-circle-notch"></i> Pulseras
+                                </button>
+                                <button class="pos-category-chip" data-category="relojes">
+                                    <i class="fas fa-clock"></i> Relojes
+                                </button>
+                            </div>
+                            <div class="pos-view-toggle">
+                                <button class="pos-view-btn active" data-view="grid" title="Vista Grid">
+                                    <i class="fas fa-th"></i>
+                                </button>
+                                <button class="pos-view-btn" data-view="list" title="Vista Lista">
+                                    <i class="fas fa-list"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Filtros Avanzados Colapsable -->
+                        <div class="pos-advanced-filters" id="pos-advanced-filters" style="display: none;">
+                            <div class="pos-filter-row">
+                                <select id="pos-metal-filter" class="pos-filter-select">
+                                    <option value="">Todos los metales</option>
+                                    <option value="Oro 18k">Oro 18k</option>
+                                    <option value="Oro 14k">Oro 14k</option>
+                                    <option value="Plata 925">Plata 925</option>
+                                    <option value="Platino">Platino</option>
+                                </select>
+                                <select id="pos-stone-filter" class="pos-filter-select">
+                                    <option value="">Todas las piedras</option>
+                                    <option value="Diamante">Diamante</option>
+                                    <option value="Rubí">Rubí</option>
+                                    <option value="Zafiro">Zafiro</option>
+                                    <option value="Esmeralda">Esmeralda</option>
+                                </select>
+                                <div class="pos-price-range">
+                                    <input type="number" id="pos-min-price" placeholder="Min $" class="pos-filter-input">
+                                    <span>-</span>
+                                    <input type="number" id="pos-max-price" placeholder="Max $" class="pos-filter-input">
+                                </div>
+                            </div>
+                        </div>
+                        <button class="pos-toggle-filters" onclick="window.POS.toggleAdvancedFilters()">
+                            <i class="fas fa-sliders-h"></i> Filtros Avanzados
+                            <i class="fas fa-chevron-down" id="pos-filters-chevron"></i>
+                        </button>
+
+                        <!-- Grid de Productos -->
+                        <div class="pos-products-container">
+                            <div class="pos-products-grid" id="pos-products-list">
+                                <div class="pos-loading-products">
+                                    <div class="pos-loader"></div>
+                                    <span>Cargando productos...</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Paginación / Info de Productos -->
+                        <div class="pos-products-footer">
+                            <span class="pos-products-count" id="pos-products-count">0 productos encontrados</span>
+                            <div class="pos-sort-options">
+                                <select id="pos-sort-by" class="pos-sort-select">
+                                    <option value="name">Ordenar por Nombre</option>
+                                    <option value="price-asc">Precio: Menor a Mayor</option>
+                                    <option value="price-desc">Precio: Mayor a Menor</option>
+                                    <option value="recent">Más Recientes</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panel Derecho: Carrito y Checkout -->
+                    <div class="pos-checkout-panel">
+                        <!-- Info de Guía/Agencia/Cliente -->
+                        <div class="pos-customer-section">
+                            <div class="pos-customer-header">
+                                <h4><i class="fas fa-user-tag"></i> Información de Venta</h4>
+                                <button class="pos-mini-btn" onclick="window.POS.clearSaleInfo()" title="Limpiar">
+                                    <i class="fas fa-eraser"></i>
+                                </button>
+                            </div>
+                            <div class="pos-customer-grid">
+                                <div class="pos-customer-field">
+                                    <label><i class="fas fa-id-badge"></i> ❶ Guía</label>
+                                    <div class="pos-customer-value" id="pos-current-guide">
+                                        <span class="pos-placeholder">Escanear guía...</span>
+                                    </div>
+                                </div>
+                                <div class="pos-customer-field">
+                                    <label><i class="fas fa-building"></i> Agencia</label>
+                                    <div class="pos-customer-value" id="pos-current-agency">
+                                        <span class="pos-placeholder">Auto-detectada</span>
+                                    </div>
+                                </div>
+                                <div class="pos-customer-field">
+                                    <label><i class="fas fa-user-tag"></i> ❷ Vendedor</label>
+                                    <div class="pos-customer-value" id="pos-current-seller">
+                                        <span class="pos-placeholder">Escanear vendedor...</span>
+                                    </div>
+                                </div>
+                                <div class="pos-customer-field pos-customer-field-full">
+                                    <label><i class="fas fa-user"></i> Cliente (opcional)</label>
+                                    <div class="pos-customer-input-wrapper">
+                                        <input type="text" id="pos-customer-search" class="pos-customer-input" 
+                                               placeholder="Buscar cliente..." autocomplete="off">
+                                        <button class="pos-add-customer-btn" onclick="window.POS.quickAddCustomer()" title="Nuevo Cliente">
+                                            <i class="fas fa-plus"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Carrito de Compras -->
+                        <div class="pos-cart-section">
+                            <div class="pos-cart-header">
+                                <h4><i class="fas fa-shopping-cart"></i> Carrito <span id="pos-cart-count">(0)</span></h4>
+                                <div class="pos-cart-actions">
+                                    <button class="pos-mini-btn" onclick="window.POS.holdSale()" title="Pausar Venta (F5)">
+                                        <i class="fas fa-pause"></i>
+                                    </button>
+                                    <button class="pos-mini-btn pos-danger" onclick="window.POS.clearCart()" title="Vaciar Carrito">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Lista de Items del Carrito -->
+                            <div class="pos-cart-items-advanced" id="pos-cart-items">
+                                <div class="pos-cart-empty">
+                                    <i class="fas fa-shopping-basket"></i>
+                                    <p>El carrito está vacío</p>
+                                    <span>Selecciona productos para agregar</span>
+                                </div>
+                            </div>
+
+                            <!-- Descuentos -->
+                            <div class="pos-discounts-bar">
+                                <span class="pos-discount-label">Descuento:</span>
+                                <div class="pos-discount-chips">
+                                    <button class="pos-discount-chip" data-discount="0" onclick="window.POS.applyQuickDiscount(0)">0%</button>
+                                    <button class="pos-discount-chip" data-discount="5" onclick="window.POS.applyQuickDiscount(5)">5%</button>
+                                    <button class="pos-discount-chip" data-discount="10" onclick="window.POS.applyQuickDiscount(10)">10%</button>
+                                    <button class="pos-discount-chip" data-discount="15" onclick="window.POS.applyQuickDiscount(15)">15%</button>
+                                    <button class="pos-discount-chip" data-discount="20" onclick="window.POS.applyQuickDiscount(20)">20%</button>
+                                    <button class="pos-discount-chip pos-custom-discount" onclick="window.POS.showCustomDiscount()">
+                                        <i class="fas fa-percentage"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Resumen y Totales -->
+                        <div class="pos-summary-section">
+                            <div class="pos-summary-row">
+                                <span>Subtotal</span>
+                                <span id="pos-subtotal">$0.00</span>
+                            </div>
+                            <div class="pos-summary-row pos-discount-row" id="pos-discount-display" style="display: none;">
+                                <span>Descuento (<span id="pos-discount-percent">0</span>%)</span>
+                                <span class="pos-discount-amount">-<span id="pos-discount-amount">$0.00</span></span>
+                            </div>
+                            <div class="pos-summary-row pos-total-row">
+                                <span>TOTAL</span>
+                                <span class="pos-grand-total" id="pos-total">$0.00</span>
+                            </div>
+                        </div>
+
+                        <!-- Sección de Pagos Expandible -->
+                        <div class="pos-payments-section">
+                            <div class="pos-payments-header-advanced" onclick="window.POS.togglePayments()">
+                                <h4><i class="fas fa-credit-card"></i> Métodos de Pago</h4>
+                                <i class="fas fa-chevron-down" id="pos-payments-toggle"></i>
+                            </div>
+                            <div class="pos-payments-content-advanced" id="pos-payments-content">
+                                <div class="pos-payment-methods">
+                                    <div class="pos-payment-method">
+                                        <div class="pos-payment-icon cash-usd">
+                                            <i class="fas fa-dollar-sign"></i>
+                                        </div>
+                                        <div class="pos-payment-info">
+                                            <label>Efectivo USD</label>
+                                            <input type="number" id="payment-cash-usd" class="pos-payment-input" 
+                                                   step="0.01" value="0" min="0">
+                                        </div>
+                                    </div>
+                                    <div class="pos-payment-method">
+                                        <div class="pos-payment-icon cash-mxn">
+                                            <i class="fas fa-peso-sign"></i>
+                                        </div>
+                                        <div class="pos-payment-info">
+                                            <label>Efectivo MXN</label>
+                                            <input type="number" id="payment-cash-mxn" class="pos-payment-input" 
+                                                   step="0.01" value="0" min="0">
+                                        </div>
+                                    </div>
+                                    <div class="pos-payment-method">
+                                        <div class="pos-payment-icon cash-cad">
+                                            <i class="fas fa-leaf"></i>
+                                        </div>
+                                        <div class="pos-payment-info">
+                                            <label>Efectivo CAD</label>
+                                            <input type="number" id="payment-cash-cad" class="pos-payment-input" 
+                                                   step="0.01" value="0" min="0">
+                                        </div>
+                                    </div>
+                                    <div class="pos-payment-method" style="grid-column: span 2;">
+                                        <div class="pos-payment-icon card-visa">
+                                            <i class="fab fa-cc-visa"></i>
+                                        </div>
+                                        <div class="pos-payment-info" style="flex: 1;">
+                                            <label>Visa/MC</label>
+                                            <input type="number" id="payment-tpv-visa" class="pos-payment-input" 
+                                                   step="0.01" value="0" min="0">
+                                        </div>
+                                        <div style="display: flex; gap: var(--spacing-xs); margin-top: var(--spacing-xs);">
+                                            <select id="payment-tpv-visa-bank" class="form-select" style="flex: 1; font-size: 11px; padding: 4px;">
+                                                <option value="banamex">Banamex</option>
+                                                <option value="santander">Santander</option>
+                                            </select>
+                                            <select id="payment-tpv-visa-type" class="form-select" style="flex: 1; font-size: 11px; padding: 4px;">
+                                                <option value="national">Nacional</option>
+                                                <option value="international">Internacional</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="pos-payment-method" style="grid-column: span 2;">
+                                        <div class="pos-payment-icon card-amex">
+                                            <i class="fab fa-cc-amex"></i>
+                                        </div>
+                                        <div class="pos-payment-info" style="flex: 1;">
+                                            <label>Amex</label>
+                                            <input type="number" id="payment-tpv-amex" class="pos-payment-input" 
+                                                   step="0.01" value="0" min="0">
+                                        </div>
+                                        <div style="display: flex; gap: var(--spacing-xs); margin-top: var(--spacing-xs);">
+                                            <select id="payment-tpv-amex-bank" class="form-select" style="flex: 1; font-size: 11px; padding: 4px;">
+                                                <option value="banamex">Banamex</option>
+                                                <option value="santander">Santander</option>
+                                            </select>
+                                            <select id="payment-tpv-amex-type" class="form-select" style="flex: 1; font-size: 11px; padding: 4px;">
+                                                <option value="national">Nacional</option>
+                                                <option value="international">Internacional</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Calculadora de Cambio -->
+                                <div class="pos-change-calculator">
+                                    <div class="pos-calculator-row">
+                                        <span>Total Pagado:</span>
+                                        <span class="pos-paid-amount" id="payments-total">$0.00</span>
+                                    </div>
+                                    <div class="pos-calculator-row pos-change-row" id="pos-change-row">
+                                        <span id="pos-change-label">Faltante:</span>
+                                        <span class="pos-change-amount" id="payments-difference">$0.00</span>
+                                    </div>
+                                </div>
+
+                                <!-- Botones de Pago Rápido -->
+                                <div class="pos-quick-pay">
+                                    <button class="pos-quick-pay-btn" onclick="window.POS.payExact('USD')">
+                                        <i class="fas fa-dollar-sign"></i> Pago exacto USD
+                                    </button>
+                                    <button class="pos-quick-pay-btn" onclick="window.POS.payExact('MXN')">
+                                        <i class="fas fa-peso-sign"></i> Pago exacto MXN
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Botones de Acción -->
+                        <div class="pos-action-buttons">
+                            <button class="pos-secondary-btn" onclick="window.POS.saveDraft()">
+                                <i class="fas fa-save"></i> Guardar Borrador
+                            </button>
+                            <button class="pos-secondary-btn" onclick="window.POS.showDrafts()" title="Ver borradores guardados">
+                                <i class="fas fa-folder-open"></i> Ver Borradores
+                            </button>
+                            <button class="pos-secondary-btn" onclick="window.POS.reserveSale()">
+                                <i class="fas fa-bookmark"></i> Apartar
+                            </button>
+                            <button class="pos-primary-btn" id="pos-complete-btn" onclick="window.POS.completeSale()">
+                                <i class="fas fa-check-circle"></i> Completar Venta
+                                <span class="pos-btn-shortcut">F12</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal de Vista Rápida de Producto -->
+                <div class="pos-quick-view-modal" id="pos-quick-view" style="display: none;">
+                    <div class="pos-quick-view-content">
+                        <button class="pos-quick-view-close" onclick="window.POS.closeQuickView()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                        <div class="pos-quick-view-body" id="pos-quick-view-body">
+                            <!-- Contenido dinámico -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notificación de Venta Exitosa -->
+                <div class="pos-success-overlay" id="pos-success-overlay" style="display: none;">
+                    <div class="pos-success-content">
+                        <div class="pos-success-icon">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <h3>¡Venta Completada!</h3>
+                        <p id="pos-success-folio">Folio: ---</p>
+                        <p id="pos-success-total">Total: $0.00</p>
+                        <div class="pos-success-actions">
+                            <button class="pos-success-btn" onclick="window.POS.printLastTicket()">
+                                <i class="fas fa-print"></i> Imprimir Ticket
+                            </button>
+                            <button class="pos-success-btn-secondary" onclick="window.POS.closeSuccessOverlay()">
+                                Nueva Venta
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Inventory Module -->
+            <div id="module-inventory" class="module" style="display: none;">
+                <div class="module-header">
+                    <h2><i class="fas fa-boxes"></i> Inventario</h2>
+                    <div class="module-actions">
+                        <span id="inventory-selected-count" style="font-size: 12px; color: var(--color-text-secondary); margin-right: 8px;"></span>
+                        <button class="btn-danger" id="inventory-delete-selected-btn" style="display: none;">
+                            <i class="fas fa-trash"></i> Eliminar
+                        </button>
+                        <button class="btn-secondary" id="inventory-select-all-btn">
+                            <i class="fas fa-check-square"></i> Seleccionar todo
+                        </button>
+                        <button class="btn-secondary" onclick="window.Inventory.showStockAlertsSummary()">
+                            <i class="fas fa-bell"></i> Alertas Stock
+                        </button>
+                        <button class="btn-primary" id="inventory-add-btn">
+                            <i class="fas fa-plus"></i> Nueva Pieza
+                        </button>
+                        <button class="btn-secondary" id="inventory-import-btn">
+                            <i class="fas fa-file-import"></i> Importar
+                        </button>
+                        <button class="btn-secondary" id="inventory-export-btn">
+                            <i class="fas fa-file-export"></i> Exportar
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Panel de Estadísticas -->
+                <div id="inventory-stats" class="inventory-stats-container"></div>
+                
+                <!-- Filtros de Inventario -->
+                <div class="inventory-filters" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; padding: 16px; background: var(--color-bg-secondary); border-radius: var(--radius-lg); margin-bottom: 20px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 11px;">Búsqueda</label>
+                        <input type="text" id="inventory-search" class="form-input" placeholder="SKU, nombre, barcode...">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 11px;">Estado</label>
+                        <select id="inventory-status-filter" class="form-select">
+                            <option value="">Todos los estados</option>
+                            <option value="disponible">Disponible</option>
+                            <option value="vendida">Vendida</option>
+                            <option value="apartada">Apartada</option>
+                            <option value="reparacion">En Reparación</option>
+                            <option value="exhibicion">En Exhibición</option>
+                            <option value="reservado">Reservado</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 11px;"><i class="fas fa-cubes" style="color: var(--color-primary);"></i> Alerta Stock</label>
+                        <select id="inventory-stock-alert-filter" class="form-select">
+                            <option value="">Todos</option>
+                            <option value="out">⛔ Agotados</option>
+                            <option value="low">⚠️ Stock Bajo</option>
+                            <option value="over">📈 Exceso</option>
+                            <option value="ok">✅ Normal</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 11px;">Sucursal</label>
+                        <select id="inventory-branch-filter" class="form-select">
+                            <option value="">Todas las sucursales</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 11px;">Metal</label>
+                        <select id="inventory-metal-filter" class="form-select">
+                            <option value="">Todos los metales</option>
+                            <option value="Oro 18k">Oro 18k</option>
+                            <option value="Oro 14k">Oro 14k</option>
+                            <option value="Oro 10k">Oro 10k</option>
+                            <option value="Plata 925">Plata 925</option>
+                            <option value="Plata Sterling">Plata Sterling</option>
+                            <option value="Platino">Platino</option>
+                            <option value="Paladio">Paladio</option>
+                            <option value="Titanio">Titanio</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 11px;">Tipo de Piedra</label>
+                        <select id="inventory-stone-type-filter" class="form-select">
+                            <option value="">Todas las piedras</option>
+                            <option value="Diamante">Diamante</option>
+                            <option value="Rubí">Rubí</option>
+                            <option value="Zafiro">Zafiro</option>
+                            <option value="Esmeralda">Esmeralda</option>
+                            <option value="Perla">Perla</option>
+                            <option value="Amatista">Amatista</option>
+                            <option value="Topacio">Topacio</option>
+                            <option value="Citrino">Citrino</option>
+                            <option value="Aguamarina">Aguamarina</option>
+                            <option value="Tanzanita">Tanzanita</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 11px;">Con Certificado</label>
+                        <select id="inventory-certificate-filter" class="form-select">
+                            <option value="">Todos</option>
+                            <option value="yes">Con Certificado</option>
+                            <option value="no">Sin Certificado</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 11px;">Costo Mín</label>
+                        <input type="number" id="inventory-min-price" class="form-input" step="0.01" value="0" placeholder="0">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 11px;">Costo Máx</label>
+                        <input type="number" id="inventory-max-price" class="form-input" step="0.01" value="999999999" placeholder="Sin límite">
+                    </div>
+                </div>
+                
+                <!-- Lista de Inventario -->
+                <div id="inventory-list" class="inventory-grid"></div>
+            </div>
+
+            <!-- Other modules will be loaded dynamically -->
+            <div id="module-placeholder" class="module" style="display: none;">
+                <div class="module-header">
+                    <h2 id="module-title">Módulo</h2>
+                </div>
+                <div id="module-content"></div>
+            </div>
+
+            <!-- QA / Autopruebas Module (Solo Admin) -->
+            <div id="module-qa" class="module" style="display: none;">
+                <div class="module-header">
+                    <h2>🧪 QA / Autopruebas</h2>
+                </div>
+                <div id="qa-module-content"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-overlay" class="modal-overlay" style="display: none;">
+        <div class="modal" id="modal-container">
+            <div class="modal-header">
+                <h3 id="modal-title"></h3>
+                <button class="modal-close" id="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body"></div>
+            <div class="modal-footer" id="modal-footer"></div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <!-- Librerías externas - Deben cargarse primero -->
+    <script src="libs/jspdf.umd.min.js?v=202512202023"></script>
+    <script src="libs/xlsx.full.min.js?v=202512202023"></script>
+    <script src="libs/JsBarcode.all.min.js?v=202512202023"></script>
+    
+    <!-- Verificación de librerías -->
+    <script>
+        // Verificar que las librerías se hayan cargado correctamente
+        window.addEventListener('DOMContentLoaded', function() {
+            if (typeof window.jspdf === 'undefined') {
+                console.error('⚠️ jsPDF no se cargó correctamente. Verifica que el archivo libs/jspdf.umd.min.js exista.');
+            } else {
+                console.log('✅ jsPDF cargado correctamente');
+            }
+            
+            if (typeof XLSX === 'undefined') {
+                console.error('⚠️ SheetJS (XLSX) no se cargó correctamente. Verifica que el archivo libs/xlsx.full.min.js exista.');
+            } else {
+                console.log('✅ SheetJS (XLSX) cargado correctamente');
+            }
+            
+            if (typeof JsBarcode === 'undefined') {
+                console.error('⚠️ JsBarcode no se cargó correctamente. Verifica que el archivo libs/JsBarcode.all.min.js exista.');
+            } else {
+                console.log('✅ JsBarcode cargado correctamente');
+            }
+        });
+    </script>
+    
+    <script src="js/utils.js?v=202512202023"></script>
+    <script src="js/db.js?v=202512202023"></script>
+    <!-- API y WebSocket para Railway -->
+    <script src="js/api.js?v=202512202023"></script>
+    <script src="js/socket.js?v=202512202023"></script>
+    <script src="js/branch-selector.js?v=202512202023"></script>
+    <script src="js/branch_manager.js?v=202512202023"></script>
+    <script src="js/permission_manager.js?v=202512202023"></script>
+    <script src="js/backup.js?v=202512202023"></script>
+    <script src="js/barcodes.js?v=202512202023"></script>
+    <!-- Script de sincronización deshabilitado - ya no se necesita (sistema centralizado) -->
+    <!-- <script src="js/sync.js?v=202512202023"></script> -->
+    <script src="js/ui.js?v=202512202023"></script>
+    <script src="js/inventory.js?v=202512202023"></script>
+    <script src="js/users.js?v=202512202023"></script>
+    <script src="js/pos.js?v=202512202023"></script>
+    <script src="js/customers.js?v=202512202023"></script>
+    <script src="js/employees.js?v=202512202023"></script>
+    <script src="js/repairs.js?v=202512202023"></script>
+    <script src="js/dashboard.js?v=202512202023"></script>
+    <script src="js/reports.js?v=202512202023"></script>
+    <script src="js/costs.js?v=202512202023"></script>
+    <script src="js/tourist_report.js?v=202512202023"></script>
+    <script src="js/cash.js?v=202512202023"></script>
+    <script src="js/barcodes_module.js?v=202512202023"></script>
+    <script src="js/settings.js?v=202512202023"></script>
+    <!-- Script de UI de sincronización deshabilitado - ya no se necesita (sistema centralizado) -->
+    <!-- <script src="js/sync_ui.js?v=202512202023"></script> -->
+    <script src="js/printer.js?v=202512202023"></script>
+    <script src="js/arrival_rules.js?v=202512202023"></script>
+    <script src="js/exchange_rates.js?v=202512202023"></script>
+    <script src="js/profit.js?v=202512202023"></script>
+    <script src="js/transfers.js?v=202512202023"></script>
+    <script src="js/branch_validator.js?v=202512202023"></script>
+    <script src="js/qa.js?v=202512202023"></script>
+    <script src="js/system_auditor.js?v=202512202023"></script>
+    <script src="js/jewelry_label_editor.js?v=202512202023"></script>
+    <script src="js/app.js?v=202512202023"></script>
+    <script>
+        // Initialize app after all scripts loaded
+        if (typeof App !== 'undefined' && App.init) {
+            App.init().catch(err => {
+                console.error('Error inicializando app:', err);
+            });
+        }
+    </script>
+</body>
+</html>
