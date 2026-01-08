@@ -1,6 +1,28 @@
+// Función helper para agregar headers CORS (importada desde server.js o definida aquí)
+const addCORSHeaders = (req, res) => {
+    const origin = req.headers.origin;
+    // Permitir cualquier origen .vercel.app, .netlify.app, o el configurado
+    if (origin) {
+        if (origin.includes('.vercel.app') || origin.includes('.netlify.app') || 
+            origin.includes('localhost') || origin.includes('127.0.0.1') ||
+            process.env.CORS_ORIGIN === '*' || 
+            (process.env.CORS_ORIGIN && process.env.CORS_ORIGIN.split(',').includes(origin))) {
+            res.header('Access-Control-Allow-Origin', origin);
+            res.header('Access-Control-Allow-Credentials', 'true');
+        }
+    } else {
+        res.header('Access-Control-Allow-Origin', '*');
+    }
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+};
+
 // Manejo de Errores
 export function errorHandler(err, req, res, next) {
     console.error('Error:', err);
+    
+    // Agregar headers CORS a respuestas de error
+    addCORSHeaders(req, res);
 
     // Error de validación
     if (err.name === 'ValidationError') {
