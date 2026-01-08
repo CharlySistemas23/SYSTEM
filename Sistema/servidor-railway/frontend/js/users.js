@@ -39,6 +39,8 @@ const UserManager = {
                     const setupData = await setupResponse.json();
                     if (setupData.success) {
                         console.log('✅ Usuario admin configurado automáticamente');
+                        // Esperar un momento para asegurar que el usuario se creó/actualizó en la BD
+                        await new Promise(resolve => setTimeout(resolve, 500));
                     }
                 }
             } catch (setupError) {
