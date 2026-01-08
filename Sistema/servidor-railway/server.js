@@ -33,8 +33,9 @@ const server = createServer(app);
 const io = new Server(server, {
     cors: {
         origin: function (origin, callback) {
-            // Permitir requests sin origin (archivos locales, Postman, etc.)
-            if (!origin) {
+            // Permitir requests sin origin (archivos locales file://, Postman, etc.)
+            // 'null' es el valor que el navegador envía cuando se abre desde file://
+            if (!origin || origin === 'null') {
                 return callback(null, true);
             }
             
@@ -46,7 +47,8 @@ const io = new Server(server, {
                 callback(new Error('Not allowed by CORS'));
             }
         },
-        methods: ['GET', 'POST', 'PUT', 'DELETE'],
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
         credentials: true
     },
     pingTimeout: 60000,
@@ -56,8 +58,9 @@ const io = new Server(server, {
 // Middleware
 app.use(cors({
     origin: function (origin, callback) {
-        // Permitir requests sin origin (archivos locales, Postman, etc.)
-        if (!origin) {
+        // Permitir requests sin origin (archivos locales file://, Postman, etc.)
+        // 'null' es el valor que el navegador envía cuando se abre desde file://
+        if (!origin || origin === 'null') {
             return callback(null, true);
         }
         
@@ -70,8 +73,20 @@ app.use(cors({
             callback(new Error('Not allowed by CORS'));
         }
     },
-    credentials: true
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range']
 }));
+// Manejar preflight OPTIONS requests explícitamente
+app.options('*', (req, res) => {
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.sendStatus(200);
+});
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
