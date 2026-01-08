@@ -409,12 +409,30 @@ async function waitForDatabase(maxRetries = 10, delay = 2000) {
     return false;
 }
 
-// Función para verificar si las tablas existen
+// Función para verificar si las tablas críticas existen
 async function checkTablesExist() {
     try {
         const { query } = await import('./config/database.js');
-        await query('SELECT 1 FROM catalog_branches LIMIT 1');
-        return true;
+        
+        // Verificar tablas críticas: branches, users, employees
+        const criticalTables = ['catalog_branches', 'users', 'employees'];
+        let existingCount = 0;
+        
+        for (const tableName of criticalTables) {
+            try {
+                await query(`SELECT 1 FROM ${tableName} LIMIT 1`);
+                existingCount++;
+            } catch (error) {
+                if (error.code === '42P01' || error.message.includes('does not exist')) {
+                    console.log(`   ⚠️  Tabla faltante: ${tableName}`);
+                    return false;
+                }
+                throw error;
+            }
+        }
+        
+        console.log(`✅ Verificadas ${existingCount}/${criticalTables.length} tablas críticas`);
+        return existingCount === criticalTables.length;
     } catch (error) {
         if (error.code === '42P01' || error.message.includes('does not exist')) {
             return false;
@@ -436,22 +454,34 @@ async function startServer() {
         await waitForDatabase();
         console.log('✅ Base de datos conectada');
         
-        // Verificar si las tablas existen
+        // Verificar si las tablas críticas existen
+        console.log('🔍 Verificando existencia de tablas críticas...');
         const tablesExist = await checkTablesExist();
         
         if (!tablesExist) {
-            console.log('🔄 Tablas no encontradas - ejecutando migración automática...');
+            console.log('');
+            console.log('🔄 Tablas críticas faltantes - ejecutando migración automática...');
             try {
                 const { migrate } = await import('./database/migrate-auto.js');
                 await migrate();
+                console.log('');
                 console.log('✅ Migración automática completada exitosamente');
+                
+                // Verificar nuevamente después de la migración
+                const verifyTables = await checkTablesExist();
+                if (!verifyTables) {
+                    console.warn('⚠️  Algunas tablas aún no existen después de la migración');
+                    console.warn('💡 Ejecuta manualmente: npm run migrate');
+                }
             } catch (migrateError) {
-                console.error('⚠️  Error en migración automática:', migrateError.message);
-                console.log('💡 Nota: El servidor iniciará pero necesitarás ejecutar: npm run migrate');
-                // Continuar aunque falle la migración (puede que el usuario la ejecute manualmente)
+                console.error('');
+                console.error('❌ Error en migración automática:', migrateError.message);
+                console.error('💡 Ejecuta manualmente desde Railway Console: npm run migrate');
+                console.error('');
+                // Continuar aunque falle la migración
             }
         } else {
-            console.log('✅ Base de datos verificada - tablas existentes');
+            console.log('✅ Base de datos verificada - todas las tablas críticas existen');
         }
         
         // Iniciar servidor HTTP
