@@ -108,13 +108,13 @@ export async function seedDatabase() {
                 console.log('✅ PIN agregado al usuario admin');
             }
             
-            // Verificar que tenga password hash
+            // Verificar que tenga password hash (por compatibilidad, aunque no se usa en login normal)
             if (!existingAdmin.password_hash) {
-                console.log('⚠️  Usuario admin existe pero no tiene password. Actualizando...');
+                console.log('⚠️  Usuario admin existe pero no tiene password_hash. Actualizando (no se usa en login)...');
                 const passwordHash = await bcrypt.hash('admin123', 10);
                 const { update } = await import('../config/database.js');
                 await update('users', existingAdmin.id, { password_hash: passwordHash });
-                console.log('✅ Password agregado al usuario admin');
+                console.log('✅ Password hash agregado al usuario admin');
             }
             
             // Actualizar usuario admin para asegurar que tenga employee_id y branch_id correctos
@@ -246,10 +246,14 @@ export async function seedDatabase() {
         console.log('✅ SEED COMPLETADO EXITOSAMENTE');
         console.log('═══════════════════════════════════════════════════════');
         console.log('');
-        console.log('📋 CREDENCIALES POR DEFECTO:');
-        console.log('   Username: admin');
-        console.log('   Password: admin123');
-        console.log('   PIN: 1234');
+        console.log('📋 CREDENCIALES PARA LOGIN:');
+        console.log('');
+        console.log('   1️⃣  CÓDIGO DE EMPRESA (primera pantalla):');
+        console.log('      Código: OPAL2024');
+        console.log('');
+        console.log('   2️⃣  USUARIO Y PIN (segunda pantalla):');
+        console.log('      Usuario: admin');
+        console.log('      PIN: 1234');
         console.log('');
         console.log('⚠️  IMPORTANTE: Cambia estas credenciales después del primer login');
         console.log('═══════════════════════════════════════════════════════');
