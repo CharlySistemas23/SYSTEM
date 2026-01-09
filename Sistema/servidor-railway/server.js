@@ -11,7 +11,6 @@ import { existsSync } from 'fs';
 import { initDatabase } from './config/database.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { autoRepairMiddleware } from './middleware/autoRepair.js';
-import { autoRepairMiddleware } from './middleware/autoRepair.js';
 
 // Para ES modules: obtener __dirname
 const __filename = fileURLToPath(import.meta.url);
