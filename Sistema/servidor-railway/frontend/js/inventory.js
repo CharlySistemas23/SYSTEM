@@ -298,6 +298,28 @@ const Inventory = {
         }
     },
 
+    setupWebSocketListeners() {
+        if (typeof SocketManager === 'undefined') return;
+        
+        SocketManager.on('inventory-item-created', (data) => {
+            if (this.initialized) {
+                this.loadInventory();
+            }
+        });
+        
+        SocketManager.on('inventory-item-updated', (data) => {
+            if (this.initialized) {
+                this.loadInventory();
+            }
+        });
+        
+        SocketManager.on('inventory-item-deleted', (data) => {
+            if (this.initialized) {
+                this.loadInventory();
+            }
+        });
+    },
+
     async loadInventory() {
         // Verificar permiso
         if (typeof PermissionManager !== 'undefined' && !PermissionManager.hasPermission('inventory.view')) {
