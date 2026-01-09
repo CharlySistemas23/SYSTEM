@@ -1,0 +1,549 @@
+// Rutas de Autenticación
+import express from 'express';
+import bcrypt from 'bcryptjs';
+import { generateToken } from '../middleware/auth.js';
+import { queryOne, query } from '../config/database.js';
+import { asyncHandler } from '../middleware/errorHandler.js';
+import { logLogin, logLogout } from '../utils/audit.js';
+import { authLimiter } from '../middleware/rateLimit.js';
+import { sanitizeString, sanitizeEmail } from '../utils/sanitize.js';
+
+const router = express.Router();
+
+// Login
+router.post('/login', authLimiter, asyncHandler(async (req, res) => {
+    // Sanitizar inputs
+    const username = sanitizeString(req.body.username, { maxLength: 100 });
+    const password = req.body.password; // No sanitizar password (se hashea)
+    const pin = req.body.pin; // No sanitizar pin (se hashea)
+
+    if (!username) {
+        return res.status(400).json({
+            success: false,
+            error: 'Username es requerido'
+        });
+    }
+
+    // Buscar usuario por username (case-insensitive)
+    const user = await queryOne(
+        'SELECT * FROM users WHERE LOWER(username) = LOWER($1) AND active = true',
+        [username]
+    );
+
+    if (!user) {
+        // Intentar buscar sin filtro de active para debug
+        const userAny = await queryOne("SELECT * FROM users WHERE LOWER(username) = LOWER($1)", [username]);
+        const debugInfo = { 
+            username, 
+            userFound: false,
+            userExistsButInactive: userAny ? !userAny.active : false,
+            userId: userAny?.id
+        };
+        
+        return res.status(401).json({
+            success: false,
+            error: 'Usuario o contraseña incorrectos',
+            debug: debugInfo
+        });
+    }
+
+    // Verificar password o PIN
+    // Prioridad: 1) PIN si viene pin y existe pin_hash, 2) password si viene password y existe password_hash
+    // Si viene pin pero no hay pin_hash, intentar con password_hash como fallback
+    let isValid = false;
+    
+    if (pin) {
+        // Si viene PIN, primero intentar con pin_hash
+        if (user.pin_hash) {
+            isValid = await bcrypt.compare(pin, user.pin_hash);
+        } else if (user.password_hash) {
+            // Si no hay pin_hash pero hay password_hash, intentar con password_hash (fallback)
+            isValid = await bcrypt.compare(pin, user.password_hash);
+        }
+    } else if (password && user.password_hash) {
+        // Si viene password, verificar con password_hash
+        isValid = await bcrypt.compare(password, user.password_hash);
+    }
+
+    if (!isValid) {
+        // Registrar intento de login fallido
+        try {
+            await logLogin(req, user.id, user.username, false);
+        } catch (auditError) {
+            // No fallar el login si falla la auditoría
+            console.warn('Error registrando auditoría de login fallido:', auditError);
+        }
+        
+        return res.status(401).json({
+            success: false,
+            error: 'Usuario o contraseña incorrectos',
+            debug: {
+                username,
+                userId: user.id,
+                hasPin: !!pin,
+                hasPassword: !!password,
+                hasPinHash: !!user.pin_hash,
+                hasPasswordHash: !!user.password_hash,
+                active: user.active
+            }
+        });
+    }
+
+    // Obtener información del empleado si existe
+    let employee = null;
+    if (user.employee_id) {
+        employee = await queryOne(
+            'SELECT * FROM employees WHERE id = $1 AND active = true',
+            [user.employee_id]
+        );
+        
+        // Si el empleado no existe o está inactivo, pero el usuario es admin,
+        // permitir login pero registrar un warning
+        if (!employee && user.role === 'admin') {
+            console.warn(`⚠️  Usuario admin ${user.username} tiene employee_id (${user.employee_id}) pero el empleado no existe o está inactivo. Permitiendo login sin empleado.`);
+            // Continuar sin empleado - el admin puede funcionar sin empleado asociado
+        } else if (user.employee_id && !employee && user.role !== 'admin') {
+            // Solo rechazar si NO es admin y el empleado no existe
+            return res.status(401).json({
+                success: false,
+                error: 'Empleado asociado no encontrado o inactivo'
+            });
+        }
+    }
+
+    // Parsear permissions si viene como JSON string
+    let permissions = user.permissions || [];
+    if (typeof permissions === 'string') {
+        try {
+            permissions = JSON.parse(permissions);
+        } catch (e) {
+            console.warn('Error parseando permissions:', e);
+            permissions = [];
+        }
+    }
+    
+    // Si es admin, asegurar que tiene permisos completos
+    if (user.role === 'admin') {
+        if (!permissions.includes('all')) {
+            permissions = ['all'];
+        }
+    }
+
+    // CRÍTICO: Asegurar que el usuario tenga branch_id
+    // Si no tiene branch_id, asignar branch1 (JOYERIA 1) por defecto
+    if (!user.branch_id) {
+        console.warn(`⚠️ Usuario ${user.username} no tiene branch_id. Asignando branch1...`);
+        const { update, queryOne } = await import('../config/database.js');
+        
+        // Verificar que branch1 existe, si no, crearlo
+        let branch1 = await queryOne('SELECT id FROM catalog_branches WHERE id = $1', ['branch1']);
+        if (!branch1) {
+            const { insert } = await import('../config/database.js');
+            branch1 = await insert('catalog_branches', {
+                id: 'branch1',
+                name: 'JOYERIA 1',
+                address: '',
+                phone: '',
+                email: '',
+                active: true
+            });
+            console.log('✅ Sucursal branch1 creada');
+        }
+        
+        await update('users', user.id, { branch_id: 'branch1' });
+        user.branch_id = 'branch1';
+        console.log(`✅ Branch_id asignado: branch1`);
+    }
+
+    // Generar token JWT con permissions parseadas
+    const token = generateToken({
+        ...user,
+        permissions: permissions
+    });
+
+    // Registrar login exitoso en auditoría
+    try {
+        const { logLogin } = await import('../utils/audit.js');
+        await logLogin(req, user.id, user.username, true);
+    } catch (auditError) {
+        // No fallar el login si falla la auditoría
+        console.warn('Error registrando auditoría de login:', auditError);
+    }
+
+    // Obtener información de la sucursal
+    let branch = null;
+    if (user.branch_id) {
+        branch = await queryOne(
+            'SELECT * FROM catalog_branches WHERE id = $1',
+            [user.branch_id]
+        );
+        
+        // Si la sucursal no existe, crearla según el ID
+        if (!branch) {
+            console.warn(`⚠️ Sucursal ${user.branch_id} no existe. Creando...`);
+            const { insert } = await import('../config/database.js');
+            
+            // Mapeo de IDs a nombres
+            const branchNames = {
+                'branch1': 'JOYERIA 1',
+                'branch2': 'MALECON',
+                'branch3': 'SAN SEBASTIAN',
+                'branch4': 'SAYULITA'
+            };
+            
+            const branchName = branchNames[user.branch_id] || 'Sucursal Principal';
+            branch = await insert('catalog_branches', {
+                id: user.branch_id,
+                name: branchName,
+                address: '',
+                phone: '',
+                email: '',
+                active: true
+            });
+            console.log(`✅ Sucursal ${user.branch_id} creada: ${branchName}`);
+        }
+    }
+
+    res.json({
+        success: true,
+        token: token,
+        user: {
+            id: user.id,
+            username: user.username,
+            branchId: user.branch_id,
+            employeeId: user.employee_id,
+            role: user.role,
+            permissions: permissions,
+            branch_name: branch?.name
+        },
+        employee: employee ? {
+            id: employee.id,
+            name: employee.name,
+            role: employee.role,
+            branchId: employee.branch_id
+        } : null,
+        branch: branch ? {
+            id: branch.id,
+            name: branch.name,
+            address: branch.address
+        } : null
+    });
+}));
+
+// Login por código de barras del empleado
+router.post('/login/barcode', asyncHandler(async (req, res) => {
+    const { barcode, pin } = req.body;
+
+    if (!barcode) {
+        return res.status(400).json({
+            success: false,
+            error: 'Código de barras es requerido'
+        });
+    }
+
+    if (!pin) {
+        return res.status(400).json({
+            success: false,
+            error: 'PIN es requerido'
+        });
+    }
+
+    // Buscar empleado por barcode
+    const employee = await queryOne(
+        'SELECT * FROM employees WHERE barcode = $1 AND active = true',
+        [barcode]
+    );
+
+    if (!employee) {
+        return res.status(401).json({
+            success: false,
+            error: 'Empleado no encontrado'
+        });
+    }
+
+    // Buscar usuario asociado al empleado
+    const user = await queryOne(
+        'SELECT * FROM users WHERE employee_id = $1 AND active = true',
+        [employee.id]
+    );
+
+    if (!user) {
+        return res.status(401).json({
+            success: false,
+            error: 'Usuario no encontrado para este empleado'
+        });
+    }
+
+    // Verificar PIN
+    if (!user.pin_hash) {
+        return res.status(401).json({
+            success: false,
+            error: 'PIN no configurado para este usuario'
+        });
+    }
+
+    const isValid = await bcrypt.compare(pin, user.pin_hash);
+    if (!isValid) {
+        return res.status(401).json({
+            success: false,
+            error: 'PIN incorrecto'
+        });
+    }
+
+    // CRÍTICO: Asegurar que el usuario tenga branch_id (del empleado o branch1 por defecto)
+    if (!user.branch_id && employee.branch_id) {
+        const { update } = await import('../config/database.js');
+        await update('users', user.id, { branch_id: employee.branch_id });
+        user.branch_id = employee.branch_id;
+    } else if (!user.branch_id) {
+        // Si tampoco el empleado tiene branch_id, asignar branch1
+        const { update, queryOne, insert } = await import('../config/database.js');
+        
+        // Verificar que branch1 existe, si no, crearlo
+        let branch1 = await queryOne('SELECT id FROM catalog_branches WHERE id = $1', ['branch1']);
+        if (!branch1) {
+            branch1 = await insert('catalog_branches', {
+                id: 'branch1',
+                name: 'JOYERIA 1',
+                address: '',
+                phone: '',
+                email: '',
+                active: true
+            });
+        }
+        
+        await update('users', user.id, { branch_id: 'branch1' });
+        await update('employees', employee.id, { branch_id: 'branch1' });
+        user.branch_id = 'branch1';
+        employee.branch_id = 'branch1';
+    }
+
+    // Generar token
+    const token = generateToken(user);
+
+    // Obtener información de la sucursal
+    let branch = null;
+    const branchIdToUse = user.branch_id || employee.branch_id;
+    if (branchIdToUse) {
+        branch = await queryOne(
+            'SELECT * FROM catalog_branches WHERE id = $1',
+            [branchIdToUse]
+        );
+        
+        // Si la sucursal no existe, crearla según el ID
+        if (!branch) {
+            const { insert } = await import('../config/database.js');
+            
+            // Mapeo de IDs a nombres
+            const branchNames = {
+                'branch1': 'JOYERIA 1',
+                'branch2': 'MALECON',
+                'branch3': 'SAN SEBASTIAN',
+                'branch4': 'SAYULITA'
+            };
+            
+            const branchName = branchNames[branchIdToUse] || 'Sucursal Principal';
+            branch = await insert('catalog_branches', {
+                id: branchIdToUse,
+                name: branchName,
+                address: '',
+                phone: '',
+                email: '',
+                active: true
+            });
+        }
+    }
+
+    res.json({
+        success: true,
+        token: token,
+        user: {
+            id: user.id,
+            username: user.username,
+            branchId: user.branch_id || employee.branch_id,
+            employeeId: user.employee_id,
+            role: user.role,
+            permissions: user.permissions || []
+        },
+        employee: {
+            id: employee.id,
+            name: employee.name,
+            role: employee.role,
+            branchId: employee.branch_id
+        },
+        branch: branch ? {
+            id: branch.id,
+            name: branch.name,
+            address: branch.address
+        } : null
+    });
+}));
+
+// Verificar token (para validar si está activo)
+router.get('/verify', asyncHandler(async (req, res) => {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({
+            success: false,
+            error: 'Token no proporcionado'
+        });
+    }
+
+    const token = authHeader.substring(7);
+    const { verifyToken } = await import('../middleware/auth.js');
+    const decoded = verifyToken(token);
+
+    if (!decoded) {
+        return res.status(401).json({
+            success: false,
+            error: 'Token inválido'
+        });
+    }
+
+    res.json({
+        success: true,
+        user: {
+            userId: decoded.userId,
+            username: decoded.username,
+            branchId: decoded.branchId,
+            role: decoded.role
+        }
+    });
+}));
+
+// Endpoint de diagnóstico - verificar estado del usuario admin
+router.get('/diagnose-admin', asyncHandler(async (req, res) => {
+    try {
+        const adminUser = await queryOne("SELECT * FROM users WHERE username = 'admin'");
+        const employee = adminUser?.employee_id ? await queryOne('SELECT * FROM employees WHERE id = $1', [adminUser.employee_id]) : null;
+        const branch = adminUser?.branch_id ? await queryOne('SELECT * FROM catalog_branches WHERE id = $1', [adminUser.branch_id]) : null;
+        
+        let pinTest = false;
+        if (adminUser?.pin_hash) {
+            pinTest = await bcrypt.compare('1234', adminUser.pin_hash);
+        }
+        
+        res.json({
+            success: true,
+            adminUser: adminUser ? {
+                exists: true,
+                id: adminUser.id,
+                username: adminUser.username,
+                active: adminUser.active,
+                role: adminUser.role,
+                hasPinHash: !!adminUser.pin_hash,
+                hasPasswordHash: !!adminUser.password_hash,
+                pinTestValid: pinTest,
+                employeeId: adminUser.employee_id,
+                branchId: adminUser.branch_id
+            } : { exists: false },
+            employee: employee ? {
+                exists: true,
+                id: employee.id,
+                name: employee.name,
+                active: employee.active
+            } : { exists: false },
+            branch: branch ? {
+                exists: true,
+                id: branch.id,
+                name: branch.name
+            } : { exists: false },
+            credentials: {
+                username: 'admin',
+                pin: '1234',
+                companyCode: 'OPAL2024'
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+}));
+
+// Endpoint para inicializar/arreglar usuario admin (solo en desarrollo o con código secreto)
+router.post('/setup-admin', asyncHandler(async (req, res) => {
+    try {
+        // Importar la función fixAdmin
+        const { fixAdmin } = await import('../database/fix-admin.js');
+        
+        // Ejecutar fixAdmin
+        await fixAdmin();
+        
+        // VERIFICAR que el usuario existe después de fixAdmin (con retry)
+        let adminUser = null;
+        let attempts = 0;
+        const maxAttempts = 5;
+        
+        while (!adminUser && attempts < maxAttempts) {
+            adminUser = await queryOne("SELECT * FROM users WHERE username = 'admin'");
+            if (!adminUser && attempts < maxAttempts - 1) {
+                console.log(`⚠️  Usuario no encontrado después de fixAdmin, reintentando... (${attempts + 1}/${maxAttempts})`);
+                await new Promise(resolve => setTimeout(resolve, 200)); // Esperar 200ms
+                attempts++;
+            } else {
+                break;
+            }
+        }
+        
+        if (!adminUser) {
+            throw new Error('Usuario admin no existe después de ejecutar fixAdmin. El usuario no se creó correctamente.');
+        }
+        
+        // Verificar que el PIN funciona
+        const pinTest = adminUser.pin_hash ? await bcrypt.compare('1234', adminUser.pin_hash) : false;
+        
+        if (!pinTest) {
+            // Si el PIN no funciona, regenerarlo
+            console.log('⚠️  PIN hash no válido, regenerando...');
+            const pinHash = await bcrypt.hash('1234', 10);
+            const { update } = await import('../config/database.js');
+            await update('users', adminUser.id, { pin_hash: pinHash });
+            // Verificar de nuevo
+            adminUser = await queryOne("SELECT * FROM users WHERE username = 'admin'");
+            const pinTest2 = adminUser.pin_hash ? await bcrypt.compare('1234', adminUser.pin_hash) : false;
+            if (!pinTest2) {
+                throw new Error('No se pudo establecer un PIN hash válido para el usuario admin');
+            }
+        }
+        
+        // Verificar que el usuario está activo
+        if (!adminUser.active) {
+            const { update } = await import('../config/database.js');
+            await update('users', adminUser.id, { active: true });
+            adminUser.active = true;
+        }
+        
+        const debugInfo = {
+            step: 'post-fixAdmin',
+            userExists: !!adminUser,
+            userId: adminUser.id,
+            active: adminUser.active,
+            hasPinHash: !!adminUser.pin_hash,
+            pinTestValid: pinTest,
+            attempts: attempts + 1
+        };
+        
+        res.json({
+            success: true,
+            message: 'Usuario admin verificado y configurado correctamente',
+            credentials: {
+                username: 'admin',
+                pin: '1234',
+                companyCode: 'OPAL2024'
+            },
+            debug: { steps: [debugInfo] }
+        });
+    } catch (error) {
+        console.error('Error en setup-admin:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Error configurando usuario admin',
+            debug: { error: error.message, stack: error.stack }
+        });
+    }
+}));
+
+export default router;
