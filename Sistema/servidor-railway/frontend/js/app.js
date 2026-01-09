@@ -1469,11 +1469,31 @@ const App = {
         for (const rule of commissionRules) {
             try {
                 const existing = await DB.get('commission_rules', rule.id);
+                
+                // Convertir formato del frontend al formato del backend
+                // Backend espera: name, type, value
+                // Frontend tiene: entity_type, entity_id, discount_pct, multiplier
+                const backendRule = {
+                    id: rule.id,
+                    name: rule.entity_type === 'seller' 
+                        ? (rule.entity_id ? `Comisión Vendedor ${rule.entity_id}` : 'Comisión Vendedor Default')
+                        : (rule.entity_id ? `Comisión Guía ${rule.entity_id}` : 'Comisión Guía Default'),
+                    type: 'percentage', // Tipo fijo para comisiones
+                    value: rule.multiplier || 0, // Usar multiplier como value
+                    conditions: JSON.stringify({
+                        entity_type: rule.entity_type,
+                        entity_id: rule.entity_id,
+                        discount_pct: rule.discount_pct || 0
+                    }),
+                    branch_id: null, // Global por defecto
+                    active: true
+                };
+                
                 if (existing) {
                     // Actualizar si cambió
-                    await DB.put('commission_rules', rule);
+                    await DB.put('commission_rules', backendRule);
                 } else {
-                    await DB.put('commission_rules', rule);
+                    await DB.put('commission_rules', backendRule);
                 }
             } catch (e) {
                 console.error('Error creating commission rule:', e);
@@ -1804,7 +1824,19 @@ const App = {
 
             for (const cost of initialCosts) {
                 try {
-                    await DB.add('cost_entries', cost);
+                    // Remover campos no soportados por el backend
+                    // Backend solo acepta: type, category, amount, date, notes, branch_id
+                    const backendCost = {
+                        id: cost.id,
+                        type: cost.type,
+                        category: cost.category,
+                        amount: cost.amount,
+                        date: cost.date,
+                        notes: cost.notes,
+                        branch_id: cost.branch_id
+                    };
+                    
+                    await DB.add('cost_entries', backendCost);
                     // Ya no se necesita SyncManager - el backend es centralizado y tiempo real
                 } catch (e) {
                     console.error('Error creating initial cost:', e);
