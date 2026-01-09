@@ -626,7 +626,7 @@ async function startServer() {
         
         // Iniciar servidor HTTP
         const PORT = process.env.PORT || 3000;
-        server.listen(PORT, () => {
+        server.listen(PORT, async () => {
             console.log('');
             console.log('═══════════════════════════════════════════');
             console.log('✅ SERVIDOR INICIADO EXITOSAMENTE');
@@ -640,7 +640,7 @@ async function startServer() {
             console.log('═══════════════════════════════════════════');
             
             // Iniciar health check periódico
-            await startHealthCheck();
+            startHealthCheck();
             console.log('✅ Health check periódico iniciado (cada 5 minutos)');
             console.log('═══════════════════════════════════════════');
             console.log('');
