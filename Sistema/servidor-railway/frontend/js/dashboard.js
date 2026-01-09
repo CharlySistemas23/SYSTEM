@@ -531,7 +531,7 @@ const Dashboard = {
             
             // Si es vista consolidada, agregar información por sucursal
             let branchBreakdown = null;
-            if (viewAllBranches && isAdmin) {
+            if (viewAllBranches && canViewAllBranches) {
                 const branches = await DB.getAll('catalog_branches') || [];
                 branchBreakdown = await this.calculateBranchBreakdown(branches, todayStr, today);
             }
