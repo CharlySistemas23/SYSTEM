@@ -60,14 +60,25 @@ const API = {
     async refreshCSRFToken() {
         try {
             const url = this.baseURL === '' ? '/api/csrf-token' : `${this.baseURL}/api/csrf-token`;
-            const response = await fetch(url);
+            const response = await fetch(url, {
+                method: 'GET',
+                credentials: 'include',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
             if (response.ok) {
                 const data = await response.json();
-                this.csrfToken = data.token;
-                this.csrfTokenExpires = Date.now() + (data.expiresIn * 1000);
+                if (data.success && data.token) {
+                    this.csrfToken = data.token;
+                    this.csrfTokenExpires = Date.now() + (data.expiresIn * 1000);
+                }
+            } else {
+                console.warn('Error obteniendo token CSRF:', response.status, response.statusText);
             }
         } catch (e) {
-            console.warn('No se pudo obtener token CSRF:', e);
+            console.warn('No se pudo obtener token CSRF (esto es normal antes del login):', e.message);
+            // No es crítico si falla, el backend puede permitir peticiones sin CSRF para login
         }
     },
     
