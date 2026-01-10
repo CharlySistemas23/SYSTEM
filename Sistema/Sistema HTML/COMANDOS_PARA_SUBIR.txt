@@ -1,0 +1,62 @@
+========================================
+COMANDOS PARA SUBIR CAMBIOS A GITHUB
+========================================
+
+OPCIÓN 1: Usar el script automático (MÁS FÁCIL)
+------------------------------------------------
+1. Haz doble clic en el archivo: subir-cambios.bat
+2. El script hará todo automáticamente
+
+
+OPCIÓN 2: Comandos manuales (Si prefieres hacerlo tú)
+------------------------------------------------------
+
+Abre PowerShell o CMD en esta carpeta y ejecuta:
+
+# 1. Ver qué archivos cambiaron
+git status
+
+# 2. Agregar los archivos modificados
+git add package.json vercel.json index.html js/pos.js
+
+# 3. Crear commit con los cambios
+git commit -m "Fix: Configurar Vercel para sitio estático y actualizar módulo POS"
+
+# 4. Subir a GitHub
+git push origin main
+
+
+========================================
+VERIFICAR EN VERCEL
+========================================
+
+Después de subir a GitHub:
+
+1. Ve a: https://vercel.com/dashboard
+2. Busca tu proyecto "Opal-Co" o "opal-co-pos"
+3. Verás un nuevo deployment en proceso
+4. Espera 1-2 minutos a que se complete
+5. Verifica que el status sea "Ready" (no "Error")
+
+Si hay error, comparte el mensaje de error y lo solucionamos.
+
+
+========================================
+ARCHIVOS QUE SE SUBIRÁN
+========================================
+
+✓ package.json - Sin script de build
+✓ vercel.json - Configurado para sitio estático
+✓ index.html - Con versionado actualizado
+✓ js/pos.js - Con todas las correcciones del módulo POS
+
+
+========================================
+NOTAS IMPORTANTES
+========================================
+
+- Asegúrate de estar conectado a internet
+- Asegúrate de tener permisos para hacer push al repositorio
+- Si te pide usuario/contraseña, usa tus credenciales de GitHub
+- Si usas SSH keys, asegúrate de que estén configuradas
+

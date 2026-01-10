@@ -1,0 +1,28 @@
+========================================
+INSTRUCCIONES PARA SUBIR LOS CAMBIOS
+========================================
+
+COPIA Y PEGA ESTOS COMANDOS EN POWERSHELL
+(Desde la carpeta del proyecto)
+
+git add package.json vercel.json index.html js/pos.js
+git commit -m "Fix: Configurar Vercel para sitio estático y actualizar módulo POS"
+git push origin main
+
+========================================
+ARCHIVOS QUE DEBES SUBIR
+========================================
+
+✓ package.json
+✓ vercel.json  
+✓ index.html
+✓ js/pos.js
+
+========================================
+DESPUÉS DE SUBIR
+========================================
+
+1. Ve a: https://vercel.com/dashboard
+2. Espera 1-2 minutos
+3. Verifica que el nuevo deployment esté "Ready"
+
