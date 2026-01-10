@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagnóstico Admin - Opal & Co</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #4a90e2;
+            padding-bottom: 10px;
+        }
+        .button {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        .button:hover {
+            background: #357abd;
+        }
+        .button-danger {
+            background: #e74c3c;
+        }
+        .button-danger:hover {
+            background: #c0392b;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .status-item {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-left: 4px solid #4a90e2;
+        }
+        .status-item.error {
+            border-left-color: #e74c3c;
+        }
+        .status-item.success {
+            border-left-color: #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Diagnóstico del Usuario Admin</h1>
+        <p>Esta herramienta te permite verificar y corregir el estado del usuario admin sin necesidad de acceder a la consola de Railway.</p>
+        
+        <div>
+            <button class="button" onclick="diagnose()">🔍 Verificar Estado</button>
+            <button class="button" onclick="checkTables()">📊 Verificar Tablas</button>
+            <button class="button" onclick="autoRepair()">🔧 Auto-Reparación Completa</button>
+            <button class="button button-danger" onclick="fixAdmin()">👤 Reparar Admin</button>
+        </div>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin.includes('railway') 
+            ? '' 
+            : 'https://system-production-9e21.up.railway.app';
+
+        async function diagnose() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="result info">Verificando estado del usuario admin...</div>';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/auth/diagnose-admin`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    let html = '<div class="result success"><h3>📊 Estado del Sistema:</h3>';
+                    
+                    // Usuario Admin
+                    html += '<div class="status-item ' + (data.adminUser.exists ? 'success' : 'error') + '">';
+                    html += '<strong>Usuario Admin:</strong><br>';
+                    if (data.adminUser.exists) {
+                        html += `✅ Existe (ID: ${data.adminUser.id})<br>`;
+                        html += `Estado: ${data.adminUser.active ? '✅ Activo' : '❌ Inactivo'}<br>`;
+                        html += `Rol: ${data.adminUser.role}<br>`;
+                        html += `PIN Hash: ${data.adminUser.hasPinHash ? '✅ Presente' : '❌ Faltante'}<br>`;
+                        html += `PIN Test (1234): ${data.adminUser.pinTestValid ? '✅ Válido' : '❌ Inválido'}<br>`;
+                        html += `Password Hash: ${data.adminUser.hasPasswordHash ? '✅ Presente' : '❌ Faltante'}`;
+                    } else {
+                        html += '❌ NO EXISTE';
+                    }
+                    html += '</div>';
+                    
+                    // Empleado
+                    html += '<div class="status-item ' + (data.employee.exists ? 'success' : 'error') + '">';
+                    html += '<strong>Empleado Asociado:</strong><br>';
+                    if (data.employee.exists) {
+                        html += `✅ Existe: ${data.employee.name}<br>`;
+                        html += `Estado: ${data.employee.active ? '✅ Activo' : '❌ Inactivo'}`;
+                    } else {
+                        html += '❌ NO EXISTE';
+                    }
+                    html += '</div>';
+                    
+                    // Sucursal
+                    html += '<div class="status-item ' + (data.branch.exists ? 'success' : 'error') + '">';
+                    html += '<strong>Sucursal:</strong><br>';
+                    if (data.branch.exists) {
+                        html += `✅ Existe: ${data.branch.name}`;
+                    } else {
+                        html += '❌ NO EXISTE';
+                    }
+                    html += '</div>';
+                    
+                    html += '<br><strong>📋 Credenciales:</strong><br>';
+                    html += `Código de Empresa: ${data.credentials.companyCode}<br>`;
+                    html += `Usuario: ${data.credentials.username}<br>`;
+                    html += `PIN: ${data.credentials.pin}`;
+                    
+                    html += '</div>';
+                    resultDiv.innerHTML = html;
+                } else {
+                    resultDiv.innerHTML = '<div class="result error">Error: ' + (data.error || 'Error desconocido') + '</div>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="result error">Error de conexión: ' + error.message + '</div>';
+            }
+        }
+
+        async function fixAdmin() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="result info">Reparando usuario admin... Esto puede tomar unos segundos.</div>';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/auth/setup-admin`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.innerHTML = '<div class="result success">' +
+                        '<h3>✅ Usuario Admin Reparado</h3>' +
+                        '<p>El usuario admin ha sido verificado y configurado correctamente.</p>' +
+                        '<strong>Credenciales:</strong><br>' +
+                        `Código de Empresa: ${data.credentials.companyCode}<br>` +
+                        `Usuario: ${data.credentials.username}<br>` +
+                        `PIN: ${data.credentials.pin}<br><br>` +
+                        '<strong>Ahora puedes intentar hacer login nuevamente.</strong>' +
+                        '</div>';
+                } else {
+                    resultDiv.innerHTML = '<div class="result error">Error: ' + (data.error || 'Error desconocido') + '</div>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="result error">Error de conexión: ' + error.message + '</div>';
+            }
+        }
+
+        async function checkTables() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="result info">Verificando estado de las tablas...</div>';
+            
+            try {
+                const token = localStorage.getItem('token');
+                if (!token) {
+                    resultDiv.innerHTML = '<div class="result error">Error: No hay token de autenticación. Por favor, inicia sesión primero.</div>';
+                    return;
+                }
+                
+                const response = await fetch(`${API_URL}/api/diagnose/tables`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    let html = '<div class="result ' + (data.missing === 0 ? 'success' : 'error') + '">';
+                    html += `<h3>📊 Estado de las Tablas</h3>`;
+                    html += `<p><strong>Total:</strong> ${data.total}</p>`;
+                    html += `<p><strong>Existentes:</strong> ${data.existing} ✅</p>`;
+                    html += `<p><strong>Faltantes:</strong> ${data.missing} ${data.missing === 0 ? '✅' : '❌'}</p>`;
+                    
+                    if (data.missing > 0) {
+                        html += '<br><strong>Tablas faltantes:</strong><ul>';
+                        data.missingTables.forEach(table => {
+                            html += `<li>${table}</li>`;
+                        });
+                        html += '</ul>';
+                        html += '<p>💡 Haz clic en "Auto-Reparación Completa" para crear las tablas faltantes automáticamente.</p>';
+                    }
+                    
+                    html += '</div>';
+                    resultDiv.innerHTML = html;
+                } else {
+                    resultDiv.innerHTML = '<div class="result error">Error: ' + (data.error || 'Error desconocido') + '</div>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="result error">Error de conexión: ' + error.message + '</div>';
+            }
+        }
+
+        async function autoRepair() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="result info">Ejecutando auto-reparación completa... Esto puede tomar unos minutos.</div>';
+            
+            try {
+                const token = localStorage.getItem('token');
+                if (!token) {
+                    resultDiv.innerHTML = '<div class="result error">Error: No hay token de autenticación. Por favor, inicia sesión primero.</div>';
+                    return;
+                }
+                
+                const response = await fetch(`${API_URL}/api/diagnose/auto-repair`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    let html = '<div class="result success">';
+                    html += '<h3>✅ Auto-Reparación Completada</h3>';
+                    html += '<p>El sistema ha sido verificado y reparado automáticamente.</p>';
+                    
+                    if (data.report) {
+                        html += '<br><strong>📋 Reporte de Reparación:</strong><br>';
+                        
+                        if (data.report.tables) {
+                            html += `<p><strong>Tablas:</strong> ${data.report.tables.tablesCreated.length} creadas, ${data.report.tables.tablesErrors.length} errores</p>`;
+                        }
+                        
+                        if (data.report.data) {
+                            html += `<p><strong>Datos:</strong> ${data.report.data.branchesCreated.length} sucursales creadas, ${data.report.data.usersFixed.length} usuarios reparados, ${data.report.data.employeesFixed.length} empleados reparados</p>`;
+                        }
+                        
+                        if (data.report.integrity) {
+                            html += `<p><strong>Integridad:</strong> ${data.report.integrity.foreignKeysFixed.length} foreign keys reparadas</p>`;
+                        }
+                    }
+                    
+                    html += '<br><p><strong>✅ El sistema está listo para usar.</strong></p>';
+                    html += '</div>';
+                    resultDiv.innerHTML = html;
+                } else {
+                    resultDiv.innerHTML = '<div class="result error">Error: ' + (data.error || 'Error desconocido') + '</div>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="result error">Error de conexión: ' + error.message + '</div>';
+            }
+        }
+
+        // Auto-ejecutar diagnóstico al cargar
+        window.addEventListener('load', () => {
+            diagnose();
+        });
+    </script>
+</body>
+</html>
+
