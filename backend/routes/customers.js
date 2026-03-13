@@ -1,6 +1,6 @@
 import express from 'express';
 import { query } from '../config/database.js';
-import { authenticateOptional } from '../middleware/authOptional.js';
+import { authenticateOptional, normalizeBranchId } from '../middleware/authOptional.js';
 import { emitCustomerUpdate } from '../socket/socketHandler.js';
 
 // Importar io desde el módulo principal
@@ -23,10 +23,10 @@ router.get('/', authenticateOptional, async (req, res) => {
     // Filtrar por sucursal si no es master admin
     if (!req.user.isMasterAdmin) {
       // Usuarios normales: SOLO ven clientes de su sucursal (NO incluir sin branch_id)
-      const branchId = branch_id || req.user.branchId;
+      const branchId = normalizeBranchId(branch_id) || normalizeBranchId(req.user.branchId);
       if (branchId) {
         paramCount++;
-        sql += ` AND branch_id = $${paramCount}`;
+        sql += ` AND LOWER(branch_id::text) = $${paramCount}`;
         params.push(branchId);
       } else {
         // Si no tiene branch_id asignado, no mostrar nada (evita mezclar datos)
@@ -35,8 +35,8 @@ router.get('/', authenticateOptional, async (req, res) => {
     } else if (branch_id) {
       // Master admin puede filtrar por sucursal específica (sin incluir NULL para evitar mezclas)
       paramCount++;
-      sql += ` AND branch_id = $${paramCount}`;
-      params.push(branch_id);
+      sql += ` AND LOWER(branch_id::text) = $${paramCount}`;
+      params.push(normalizeBranchId(branch_id));
     }
     // Si es master admin y no hay branch_id, no filtrar (mostrar todos)
 
@@ -73,7 +73,7 @@ router.get('/:id', authenticateOptional, async (req, res) => {
     const customer = result.rows[0];
 
     // Verificar acceso
-    if (!req.user.isMasterAdmin && customer.branch_id && customer.branch_id !== req.user.branchId) {
+    if (!req.user.isMasterAdmin && customer.branch_id && normalizeBranchId(customer.branch_id) !== normalizeBranchId(req.user.branchId)) {
       return res.status(403).json({ error: 'No tienes acceso a este cliente' });
     }
 
@@ -88,7 +88,13 @@ router.get('/:id', authenticateOptional, async (req, res) => {
 router.post('/', authenticateOptional, async (req, res) => {
   try {
     const { name, email, phone, address, notes, branch_id } = req.body;
-    const finalBranchId = branch_id || req.user.branchId;
+    const finalBranchId = normalizeBranchId(branch_id) || normalizeBranchId(req.user.branchId);
+    if (!req.user.isMasterAdmin) {
+      const allowedBranchIds = (req.user.branchIds || []).map(b => normalizeBranchId(b)).filter(Boolean);
+      if (!finalBranchId || !allowedBranchIds.includes(finalBranchId)) {
+        return res.status(403).json({ error: 'No tienes acceso a esta sucursal' });
+      }
+    }
 
     const result = await query(
       `INSERT INTO customers (name, email, phone, address, notes, branch_id)
@@ -130,11 +136,13 @@ router.put('/:id', authenticateOptional, async (req, res) => {
     const existingCustomer = existingResult.rows[0];
 
     // Verificar acceso (solo master admin puede cambiar sucursal)
-    if (!req.user.isMasterAdmin && existingCustomer.branch_id !== req.user.branchId) {
+    if (!req.user.isMasterAdmin && normalizeBranchId(existingCustomer.branch_id) !== normalizeBranchId(req.user.branchId)) {
       return res.status(403).json({ error: 'No tienes acceso a este cliente' });
     }
 
-    const finalBranchId = req.user.isMasterAdmin ? (branch_id || existingCustomer.branch_id) : existingCustomer.branch_id;
+    const finalBranchId = req.user.isMasterAdmin
+      ? (normalizeBranchId(branch_id) || normalizeBranchId(existingCustomer.branch_id))
+      : normalizeBranchId(existingCustomer.branch_id);
 
     const result = await query(
       `UPDATE customers 
@@ -182,7 +190,7 @@ router.delete('/:id', authenticateOptional, async (req, res) => {
     const customer = existingResult.rows[0];
 
     // Verificar acceso (solo master admin o mismo usuario de la sucursal)
-    if (!req.user.isMasterAdmin && customer.branch_id !== req.user.branchId) {
+    if (!req.user.isMasterAdmin && normalizeBranchId(customer.branch_id) !== normalizeBranchId(req.user.branchId)) {
       return res.status(403).json({ error: 'No tienes acceso a este cliente' });
     }
 
