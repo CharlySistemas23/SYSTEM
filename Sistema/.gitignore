@@ -1,0 +1,24 @@
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Archivos de editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+
+# Archivos temporales
+*.tmp
+*.temp
+
+# No ignorar nada más - todos los archivos del proyecto deben subirse
+
+.vercel
+.env*.local

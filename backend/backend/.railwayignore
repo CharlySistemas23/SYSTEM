@@ -1,0 +1,13 @@
+# Archivos que Railway NO debe incluir
+node_modules/
+*.log
+.env
+.env.local
+.git/
+.vscode/
+*.md
+docs/
+Sistema/
+agent-tools/
+*.bat
+*.sh
