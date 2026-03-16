@@ -9586,12 +9586,9 @@ const Reports = {
                 console.warn('No se pudieron obtener costos operativos:', e);
             }
 
-            // Si no hay comisiones bancarias registradas en cost_entries, aplicar 4.5% fijo sobre ventas (temporal)
-            const BANK_COMMISSION_FALLBACK_RATE = 4.5;
-            if (bankCommissions <= 0 && totalSalesMXN > 0) {
-                bankCommissions = totalSalesMXN * (BANK_COMMISSION_FALLBACK_RATE / 100);
-                console.log(`   Comisiones Bancarias (${BANK_COMMISSION_FALLBACK_RATE}% fijo sobre ventas): $${bankCommissions.toFixed(2)}`);
-            }
+            // No aplicar porcentaje fijo automático cuando no hay comisiones registradas.
+            // Para mantener consistencia canónica entre Dashboard/Costos/Reportes,
+            // solo usar comisiones bancarias realmente persistidas.
             
             // 8. Gastos de caja (retiros) del día
             // Los retiros de caja también son gastos operativos que deben incluirse
@@ -10762,10 +10759,7 @@ const Reports = {
                 console.warn('Error calculando costos operativos:', e);
             }
 
-            // Si no hay comisiones bancarias registradas, aplicar 4.5% fijo sobre ventas (temporal)
-            if (bankCommissions <= 0 && totalSalesMXN > 0) {
-                bankCommissions = totalSalesMXN * 0.045;
-            }
+            // No aplicar fallback porcentual fijo para evitar desalineación con Dashboard/Costos.
 
             const grossProfit = totalSalesMXN - totalCOGS - totalCommissions;
             const netProfit = grossProfit - totalArrivalCosts - totalOperatingCosts - bankCommissions;
@@ -11740,19 +11734,15 @@ const Reports = {
                             captureTotalMXN = captureTotal;
                         }
                         
-                        // Buscar configuración de comisión bancaria; si no existe, usar 4.5% fijo (temporal)
+                        // Buscar configuración de comisión bancaria; sin configuración, no estimar automáticamente
                         const bankCommissionSetting = await DB.get('settings', 'bank_commission_default_rate');
-                        const bankCommissionRate = bankCommissionSetting?.value ? parseFloat(bankCommissionSetting.value) : 4.5;
+                        const bankCommissionRate = bankCommissionSetting?.value ? parseFloat(bankCommissionSetting.value) : 0;
                         if (bankCommissionRate > 0) {
                             bankCommissions += (captureTotalMXN * bankCommissionRate) / 100;
                         }
                     }
                 }
-                // Si aún no hay comisiones bancarias (sin payment_method o sin capturas con tarjeta), aplicar 4.5% fijo sobre total ventas
-                const BANK_COMMISSION_FALLBACK_RATE = 4.5;
-                if (bankCommissions <= 0 && totalSalesMXN > 0) {
-                    bankCommissions = totalSalesMXN * (BANK_COMMISSION_FALLBACK_RATE / 100);
-                }
+                // No aplicar fallback porcentual fijo sobre ventas cuando faltan comisiones registradas.
             } catch (e) {
                 console.warn('No se pudieron obtener costos operativos:', e);
             }
@@ -12218,10 +12208,7 @@ const Reports = {
                 console.warn('Error calculando costos operativos:', e);
             }
 
-            // Si no hay comisiones bancarias registradas, aplicar 4.5% fijo sobre ventas (temporal)
-            if (bankCommissions <= 0 && totalSalesMXN > 0) {
-                bankCommissions = totalSalesMXN * 0.045;
-            }
+            // No aplicar fallback porcentual fijo para evitar desalineación con Dashboard/Costos.
             
             // Total de costos operativos (variables + fijos)
             const totalOperatingCosts = variableCostsDaily + fixedCostsProrated;
