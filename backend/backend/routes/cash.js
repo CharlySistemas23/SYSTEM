@@ -319,7 +319,7 @@ router.put('/sessions/:id/close', requireBranchAccess, async (req, res) => {
            difference = $2,
            closed_at = CURRENT_TIMESTAMP,
            closed_by = $3,
-           notes = CASE WHEN $4 IS NOT NULL THEN $4 ELSE notes END,
+           notes = COALESCE($4::text, notes),
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $5
        RETURNING *`,
