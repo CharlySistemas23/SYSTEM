@@ -1,0 +1,289 @@
+/**
+ * Opal & Co - Layout (app-shell, sidebar, topbar, container, page)
+ */
+
+/* App shell */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  height: 100vh;
+  width: 100%;
+}
+
+/* Sidebar */
+.sidebar {
+  position: relative;
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  transition: width var(--transition-base), min-width var(--transition-base);
+  overflow: hidden;
+}
+
+.sidebar.is-collapsed {
+  width: var(--sidebar-collapsed);
+  min-width: var(--sidebar-collapsed);
+}
+
+.sidebar.is-collapsed .nav-label,
+.sidebar.is-collapsed .nav-section-label,
+.sidebar.is-collapsed .sidebar-branch-label,
+.sidebar.is-collapsed .sidebar-branch-prodex .branch-name,
+.sidebar.is-collapsed .sidebar-logo-text,
+.sidebar.is-collapsed #branch-buttons-container {
+  opacity: 0;
+  visibility: hidden;
+  width: 0;
+  overflow: hidden;
+}
+
+.sidebar.is-collapsed .nav-section-header {
+  justify-content: center;
+}
+
+.sidebar.is-collapsed .nav-item {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.sidebar-toggle {
+  position: absolute;
+  top: var(--space-sm);
+  right: var(--space-sm);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: var(--color-bg);
+  color: var(--color-muted);
+  border-radius: var(--radius-8);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+  z-index: 10;
+}
+
+.sidebar-toggle:hover {
+  color: var(--color-accent);
+  background: var(--color-accent-light);
+}
+
+/* App main (topbar + content) */
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.app-main.main-container {
+  height: 100% !important;
+}
+
+/* Topbar */
+.topbar {
+  height: var(--topbar-height) !important;
+  min-height: var(--topbar-height) !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-lg);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+/* Content area */
+.content,
+.content-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+/* Container */
+.container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: var(--space-lg);
+  width: 100%;
+}
+
+/* Page structure */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--grid-gap);
+  width: 100%;
+}
+
+.page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+}
+
+.page__header h1,
+.page__header h2 {
+  margin: 0;
+}
+
+.page__subbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.page__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--grid-gap);
+}
+
+/* Grid */
+.grid {
+  display: grid;
+  gap: var(--grid-gap);
+}
+
+.grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+.grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+.grid-cols-auto { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+
+@media (max-width: 1024px) {
+  .grid-cols-4 { grid-template-columns: repeat(2, 1fr); }
+  .grid-cols-2 { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .grid-cols-4,
+  .grid-cols-2 { grid-template-columns: 1fr; }
+}
+
+/* ──────────────────────────────────────────────
+   Botón hamburguesa (visible sólo en móvil)
+   ────────────────────────────────────────────── */
+.topbar-hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-muted);
+  border-radius: var(--radius-8);
+  cursor: pointer;
+  font-size: 18px;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+.topbar-hamburger:hover {
+  color: var(--color-accent);
+  background: var(--color-accent-light);
+}
+
+/* ──────────────────────────────────────────────
+   Backdrop para cerrar el sidebar en móvil
+   ────────────────────────────────────────────── */
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 1999;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.sidebar-backdrop.visible {
+  display: block;
+}
+
+/* ──────────────────────────────────────────────
+   BREAKPOINT MÓVIL (≤ 768px)
+   Sidebar reemplazado por bottom nav de iconos
+   ────────────────────────────────────────────── */
+@media (max-width: 768px) {
+
+  /* ── Sidebar: completamente oculto en móvil ── */
+  .sidebar {
+    display: none !important;
+  }
+
+  /* Backdrop y hamburguesa: no se usan en móvil */
+  .sidebar-backdrop,
+  .topbar-hamburger {
+    display: none !important;
+  }
+
+  /* Micro-tab oculto */
+  .sidebar-micro-tab {
+    display: none !important;
+  }
+
+  /* El app-main ocupa 100% de pantalla */
+  .app-main {
+    width: 100% !important;
+  }
+
+  /* Topbar compacto */
+  .topbar {
+    padding: 0 10px !important;
+    gap: 4px !important;
+  }
+
+  /* Ocultar búsqueda central */
+  .topbar-center {
+    display: none !important;
+  }
+
+  /* content-area: 10px de respiración lateral, 72px abajo para bottom nav */
+  .content-area {
+    padding: 10px 10px 72px !important;
+  }
+
+  /* .content: solo asegurar espacio para bottom nav */
+  .content {
+    padding-bottom: 72px !important;
+  }
+
+  /* Container: sin padding extra (content-area ya provee el margen) */
+  .container {
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* Tablas: scroll horizontal */
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ──────────────────────────────────────────────
+   BREAKPOINT MUY PEQUEÑO (≤ 480px)
+   ────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .container {
+    padding: 0 !important;
+  }
+
+  .grid {
+    gap: var(--space-sm);
+  }
+}

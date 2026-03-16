@@ -1,0 +1,15 @@
+{
+  "name": "opal-frontend",
+  "version": "1.0.0",
+  "description": "Frontend Opal & Co - servir localmente para evitar errores con file://",
+  "scripts": {
+    "serve": "npx --yes serve . -l 3000",
+    "start": "npx --yes serve . -l 3000",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "audit:local": "playwright test tests/e2e/local-audit.spec.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.2"
+  }
+}

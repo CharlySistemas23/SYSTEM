@@ -1,0 +1,207 @@
+/**
+ * Opal & Co - Components (prefijo oc- para evitar choques con legacy)
+ */
+
+/* Cards */
+.oc-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-16);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.oc-card:hover {
+  box-shadow: var(--shadow-sm);
+  border-color: var(--color-border-strong);
+}
+
+.oc-card-header {
+  font-weight: 600;
+  font-size: var(--h3);
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.oc-card-body {
+  padding: 0;
+}
+
+/* Buttons */
+.oc-btn-primary {
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-12);
+  font-weight: 600;
+  transition: background var(--transition-fast);
+}
+
+.oc-btn-primary:hover {
+  background: var(--color-accent-hover);
+}
+
+.oc-btn-secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-12);
+  font-weight: 500;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.oc-btn-secondary:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-bg);
+}
+
+.oc-btn-danger {
+  background: var(--color-danger);
+  color: #fff;
+  border: none;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-12);
+  font-weight: 600;
+}
+
+.oc-btn-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-8);
+  color: var(--color-muted);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.oc-btn-icon:hover {
+  color: var(--color-accent);
+  background: var(--color-accent-light);
+}
+
+.oc-btn-sm {
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--text-sm);
+}
+
+/* Inputs */
+.oc-input,
+.oc-select {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-8);
+  font-size: var(--text-base);
+  transition: border-color var(--transition-fast);
+}
+
+.oc-input:focus,
+.oc-select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.oc-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.oc-field label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+/* Tabs */
+.oc-tabs {
+  display: flex;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.oc-tab {
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-8);
+  font-weight: 500;
+  color: var(--color-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.oc-tab:hover {
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+.oc-tab.is-active {
+  color: var(--color-accent);
+  background: var(--color-accent-light);
+}
+
+/* Badges */
+.oc-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  border-radius: var(--radius-full);
+}
+
+.oc-badge--accent { background: var(--color-accent-light); color: var(--color-accent-hover); }
+.oc-badge--success { background: var(--color-success-light); color: var(--color-success); }
+.oc-badge--warn { background: var(--color-warn-light); color: var(--color-warn); }
+.oc-badge--danger { background: var(--color-danger-light); color: var(--color-danger); }
+
+/* Tables */
+.oc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-base);
+}
+
+.oc-table th {
+  text-align: left;
+  padding: var(--space-sm) var(--space-md);
+  font-weight: 600;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  position: sticky;
+  top: 0;
+}
+
+.oc-table td {
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.oc-table tr:hover td {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* Empty state */
+.oc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl);
+  text-align: center;
+  color: var(--color-muted);
+}
+
+.oc-empty__icon {
+  font-size: 48px;
+  margin-bottom: var(--space-md);
+  opacity: 0.5;
+}
