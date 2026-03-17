@@ -1,7 +1,10 @@
 // API Client - Cliente para comunicación con el backend en tiempo real
 
 // URL del servidor Railway. Se usa como fallback para nuevos equipos sin configuración.
-const DEFAULT_RAILWAY_URL = 'https://backend-production-6260.up.railway.app';
+const DEFAULT_RAILWAY_URL = 'https://system-production-bec2.up.railway.app';
+const LEGACY_RAILWAY_URLS = new Set([
+    'https://backend-production-6260.up.railway.app'
+]);
 const ELECTRON_PROXY_URL = 'http://127.0.0.1:19200/proxy';
 
 function isElectronDesktopRuntime() {
@@ -9,6 +12,26 @@ function isElectronDesktopRuntime() {
         && window.location
         && window.location.hostname === '127.0.0.1'
         && window.location.port === '19200';
+}
+
+function normalizeApiURL(rawURL) {
+    if (!rawURL) return null;
+
+    let cleanURL = String(rawURL).trim();
+    if (!cleanURL) return null;
+
+    if (!cleanURL.startsWith('http://') && !cleanURL.startsWith('https://')) {
+        cleanURL = 'https://' + cleanURL;
+    }
+    if (cleanURL.includes('railway') && !cleanURL.endsWith('.app') && !cleanURL.endsWith('.app/')) {
+        cleanURL = cleanURL.replace(/\/+$/, '') + '.app';
+    }
+    return cleanURL.replace(/\/+$/, '');
+}
+
+function isLegacyApiURL(rawURL) {
+    const normalized = normalizeApiURL(rawURL);
+    return normalized ? LEGACY_RAILWAY_URLS.has(normalized) : false;
 }
 
 const API = {
@@ -33,27 +56,17 @@ const API = {
 
             const urlSetting = await DB.get('settings', 'api_url');
             const savedURL = urlSetting?.value || null;
+            const migratedSavedURL = isLegacyApiURL(savedURL) ? null : savedURL;
 
             // Usar URL guardada o por defecto (nuevos equipos quedan conectados automáticamente)
             const rawURL = isElectronDesktopRuntime()
                 ? ELECTRON_PROXY_URL
-                : (savedURL || DEFAULT_RAILWAY_URL);
+                : (migratedSavedURL || DEFAULT_RAILWAY_URL);
             
             // CRÍTICO: Asegurar que la URL esté correctamente formateada
             if (rawURL) {
-                // Limpiar la URL: eliminar espacios, barras finales, etc.
-                let cleanURL = rawURL.trim();
-                // Asegurar que tenga protocolo
-                if (!cleanURL.startsWith('http://') && !cleanURL.startsWith('https://')) {
-                    cleanURL = 'https://' + cleanURL;
-                }
-                // Asegurar que las URLs de Railway tengan .app al final si no lo tienen
-                if (cleanURL.includes('railway') && !cleanURL.endsWith('.app') && !cleanURL.endsWith('.app/')) {
-                    cleanURL = cleanURL.replace(/\/+$/, '') + '.app';
-                }
-                // Eliminar barras finales
-                cleanURL = cleanURL.replace(/\/+$/, '');
-                
+                const cleanURL = normalizeApiURL(rawURL);
+
                 // Solo actualizar si cambió (para evitar loops)
                 if (this.baseURL !== cleanURL) {
                     this.baseURL = cleanURL;
@@ -68,7 +81,7 @@ const API = {
                 }
             }
             // Si no había URL guardada, persistir la por defecto para próximas cargas
-            if (!savedURL && this.baseURL) {
+            if (!migratedSavedURL && this.baseURL) {
                 await DB.put('settings', { key: 'api_url', value: this.baseURL }).catch(() => {});
             }
             
@@ -106,13 +119,13 @@ const API = {
 
     // Configurar URL del API
     async setBaseURL(url) {
-        this.baseURL = url;
+        this.baseURL = normalizeApiURL(url);
         await DB.put('settings', {
             key: 'api_url',
-            value: url
+            value: this.baseURL
         });
         
-        console.log(`✅ URL del API actualizada: ${url}`);
+        console.log(`✅ URL del API actualizada: ${this.baseURL}`);
         // Limpiar cache de health al cambiar de servidor
         this._healthCache = null;
         
@@ -167,7 +180,9 @@ const API = {
         if (!this.baseURL && typeof DB !== 'undefined') {
             try {
                 const urlSetting = await DB.get('settings', 'api_url');
-                this.baseURL = urlSetting?.value || DEFAULT_RAILWAY_URL;
+                this.baseURL = isLegacyApiURL(urlSetting?.value)
+                    ? DEFAULT_RAILWAY_URL
+                    : (normalizeApiURL(urlSetting?.value) || DEFAULT_RAILWAY_URL);
             } catch (error) {
                 console.error('Error obteniendo URL desde DB:', error);
                 this.baseURL = DEFAULT_RAILWAY_URL;
@@ -218,7 +233,9 @@ const API = {
             // Asegurar que baseURL esté configurado
             if (!this.baseURL) {
                 const urlSetting = await DB.get('settings', 'api_url');
-                this.baseURL = urlSetting?.value || DEFAULT_RAILWAY_URL;
+                this.baseURL = isLegacyApiURL(urlSetting?.value)
+                    ? DEFAULT_RAILWAY_URL
+                    : (normalizeApiURL(urlSetting?.value) || DEFAULT_RAILWAY_URL);
             }
 
             // Inicializar socket

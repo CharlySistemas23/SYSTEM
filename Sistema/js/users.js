@@ -692,15 +692,19 @@ const UserManager = {
             if (!API.baseURL && typeof DB !== 'undefined') {
                 try {
                     const urlSetting = await DB.get('settings', 'api_url');
-                    const DEFAULT_RAILWAY_URL = 'https://backend-production-6260.up.railway.app';
-                    API.baseURL = urlSetting?.value || DEFAULT_RAILWAY_URL;
+                    const DEFAULT_RAILWAY_URL = 'https://system-production-bec2.up.railway.app';
+                    const normalizedSavedURL = String(urlSetting?.value || '').trim().replace(/\/+$/, '');
+                    const migratedURL = normalizedSavedURL === 'https://backend-production-6260.up.railway.app'
+                        ? DEFAULT_RAILWAY_URL
+                        : (urlSetting?.value || DEFAULT_RAILWAY_URL);
+                    API.baseURL = migratedURL;
                     // Persistir para próximas cargas
-                    if (!urlSetting?.value) {
+                    if (!urlSetting?.value || migratedURL !== urlSetting?.value) {
                         await DB.put('settings', { key: 'api_url', value: API.baseURL }).catch(() => {});
                     }
                 } catch (e) {
                     console.warn('Error cargando API.baseURL desde DB:', e);
-                    API.baseURL = 'https://backend-production-6260.up.railway.app';
+                    API.baseURL = 'https://system-production-bec2.up.railway.app';
                 }
             }
             
