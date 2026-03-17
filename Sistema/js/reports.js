@@ -9570,9 +9570,9 @@ const Reports = {
                     });
                     for (const cost of variableCosts) {
                         if (cost.category === 'comisiones_bancarias') {
-                            bankCommissions += (cost.amount || 0);
+                            bankCommissions += (parseFloat(cost.amount) || 0);
                         } else {
-                            const amount = cost.amount || 0;
+                            const amount = parseFloat(cost.amount) || 0;
                             variableCostsDaily += amount;
                             variableCostsDetail.push({
                                 category: cost.category || 'Sin categoría',
@@ -9630,7 +9630,7 @@ const Reports = {
                 
                 // Sumar retiros y agregar al detalle
                 for (const withdrawal of dayWithdrawals) {
-                    const amount = withdrawal.amount || 0;
+                    const amount = parseFloat(withdrawal.amount) || 0;
                     cashExpenses += amount;
                     const session = daySessions.find(s => s.id === withdrawal.session_id);
                     const branch = session?.branch_id ? branches.find(b => b.id === session.branch_id) : null;
@@ -12164,9 +12164,9 @@ const Reports = {
                     });
                     for (const cost of variableCosts) {
                         if (cost.category === 'comisiones_bancarias') {
-                            bankCommissions += (cost.amount || 0);
+                            bankCommissions += (parseFloat(cost.amount) || 0);
                         } else {
-                            variableCostsDaily += (cost.amount || 0);
+                            variableCostsDaily += (parseFloat(cost.amount) || 0);
                         }
                     }
                 }
