@@ -1,6 +1,6 @@
 import express from 'express';
 import { query, getClient } from '../config/database.js';
-import { requireBranchAccess } from '../middleware/authOptional.js';
+import { requireBranchAccess, normalizeBranchId } from '../middleware/authOptional.js';
 import { emitInventoryUpdate } from '../socket/socketHandler.js';
 import { createOperationLogger, safeRollback } from '../utils/operation-helpers.js';
 
@@ -27,12 +27,6 @@ router.get('/', requireBranchAccess, async (req, res) => {
     const syncLimit = (updated_after && req.query.limit)
       ? Math.min(parseInt(req.query.limit) || 500, 2000)
       : null;
-
-    const normalizeBranchId = (id) => {
-      if (id == null || id === '' || id === 'null' || id === 'undefined') return null;
-      const s = String(id).trim();
-      return s ? s.toLowerCase() : null;
-    };
 
     // Resolver branch_id efectivo (ignorar "all" para devolver TODAS las piezas)
     let branchId = null;
@@ -217,7 +211,7 @@ router.get('/:id', requireBranchAccess, async (req, res) => {
     const item = result.rows[0];
 
     // Verificar acceso a la sucursal
-    if (!req.user.isMasterAdmin && item.branch_id && item.branch_id !== req.user.branchId) {
+    if (!req.user.isMasterAdmin && item.branch_id && normalizeBranchId(item.branch_id) !== normalizeBranchId(req.user.branchId)) {
       return res.status(403).json({ error: 'No tienes acceso a este item' });
     }
 
@@ -244,7 +238,14 @@ router.post('/', requireBranchAccess, async (req, res) => {
       supplier_id, notes, photos
     } = req.body;
 
-    const finalBranchId = branch_id || req.user.branchId;
+    const finalBranchId = normalizeBranchId(branch_id) || normalizeBranchId(req.user.branchId);
+    if (!req.user.isMasterAdmin) {
+      const allowedBranchIds = (req.user.branchIds || []).map(b => normalizeBranchId(b)).filter(Boolean);
+      if (!finalBranchId || !allowedBranchIds.includes(finalBranchId)) {
+        await safeRollback(client);
+        return res.status(403).json({ error: 'No tienes acceso a esta sucursal' });
+      }
+    }
     logInventoryOperation('create_started', {
       branchId: finalBranchId,
       userId: req.user.id,
@@ -377,7 +378,7 @@ router.put('/:id', requireBranchAccess, async (req, res) => {
     existingItem = existingResult.rows[0];
 
     // Verificar acceso
-    if (!req.user.isMasterAdmin && existingItem.branch_id && existingItem.branch_id !== req.user.branchId) {
+    if (!req.user.isMasterAdmin && existingItem.branch_id && normalizeBranchId(existingItem.branch_id) !== normalizeBranchId(req.user.branchId)) {
       return res.status(403).json({ error: 'No tienes acceso a este item' });
     }
 
@@ -606,7 +607,7 @@ router.delete('/:id', requireBranchAccess, async (req, res) => {
     const item = existingResult.rows[0];
 
     // Verificar acceso
-    if (!req.user.isMasterAdmin && item.branch_id && item.branch_id !== req.user.branchId) {
+    if (!req.user.isMasterAdmin && item.branch_id && normalizeBranchId(item.branch_id) !== normalizeBranchId(req.user.branchId)) {
       await safeRollback(client);
       return res.status(403).json({ error: 'No tienes acceso a este item' });
     }

@@ -77,7 +77,14 @@ const isOriginAllowed = (origin) => {
   const { allowAll, origins } = parseConfiguredOrigins();
   if (!origin) return true;
   if (allowAll) return true;
-  return origins.includes(origin);
+  return origins.some(o => {
+    if (o.startsWith('*.')) {
+      // Comodín de sufijo: *.ejemplo.com coincide con sub.ejemplo.com
+      const suffix = o.slice(1); // quita el *
+      return origin.endsWith(suffix);
+    }
+    return o === origin;
+  });
 };
 
 // Función helper para determinar orígenes permitidos (debe estar antes de Socket.IO)

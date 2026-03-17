@@ -1471,52 +1471,59 @@ const JewelryLabelEditor = {
                 name: { x: template.name.x, y: template.name.y, fontSize: template.name.fontSize }
             });
 
-            // Abrir ventana de impresión
-            const printWindow = window.open('', '_blank');
-            if (!printWindow) {
-                Utils.showNotification('No se pudo abrir la ventana de impresión. Verifica los bloqueadores de ventanas emergentes.', 'error');
-                return;
-            }
-            
-            printWindow.document.write(printHTML);
-            printWindow.document.close();
-            
-            // Esperar a que la imagen se cargue completamente antes de imprimir
-            printWindow.addEventListener('load', () => {
-                const img = printWindow.document.querySelector('.barcode img');
-                if (img) {
-                    if (img.complete) {
-                        console.log('✅ Imagen ya cargada, imprimiendo...');
-                        setTimeout(() => {
-                            printWindow.print();
-                        }, 100);
-                    } else {
-                        console.log('⏳ Esperando carga de imagen...');
-                        img.onload = () => {
-                            console.log('✅ Imagen cargada, imprimiendo...');
-                            setTimeout(() => {
-                                printWindow.print();
-                            }, 100);
-                        };
-                        img.onerror = () => {
-                            console.error('❌ Error cargando imagen del código de barras');
-                            Utils.showNotification('Error: No se pudo cargar el código de barras', 'error');
-                        };
-                        // Timeout de seguridad
-                        setTimeout(() => {
-                            if (printWindow && !printWindow.closed) {
-                                console.log('⏱️ Timeout alcanzado, imprimiendo de todas formas...');
-                                printWindow.print();
-                            }
-                        }, 2000);
-                    }
-                } else {
-                    console.warn('⚠️ No se encontró la imagen del código de barras en el DOM');
-                    setTimeout(() => {
-                        printWindow.print();
-                    }, 500);
+            // Usar iframe para impresión (compatible con Electron - evita bloqueo de popups)
+            const iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none;visibility:hidden;';
+            document.body.appendChild(iframe);
+
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            iframeDoc.write(printHTML);
+            iframeDoc.close();
+
+            let printTriggered = false;
+            let fallbackTimer = null;
+
+            const cleanupAndPrint = () => {
+                if (printTriggered) return;
+                printTriggered = true;
+                if (fallbackTimer) {
+                    clearTimeout(fallbackTimer);
+                    fallbackTimer = null;
                 }
-            });
+                setTimeout(() => {
+                    iframe.contentWindow.print();
+                    setTimeout(() => {
+                        if (iframe.parentNode) document.body.removeChild(iframe);
+                    }, 3000);
+                }, 150);
+            };
+
+            const img = iframeDoc.querySelector('.barcode img');
+            if (img) {
+                if (img.complete && img.naturalWidth > 0) {
+                    console.log('✅ Imagen ya cargada, imprimiendo...');
+                    cleanupAndPrint();
+                } else {
+                    console.log('⏳ Esperando carga de imagen...');
+                    img.onload = () => {
+                        console.log('✅ Imagen cargada, imprimiendo...');
+                        cleanupAndPrint();
+                    };
+                    img.onerror = () => {
+                        console.error('❌ Error cargando imagen del código de barras');
+                        Utils.showNotification('Error: No se pudo cargar el código de barras', 'error');
+                        if (iframe.parentNode) document.body.removeChild(iframe);
+                    };
+                    // Timeout de seguridad
+                    fallbackTimer = setTimeout(() => {
+                        console.log('⏱️ Timeout alcanzado, imprimiendo de todas formas...');
+                        cleanupAndPrint();
+                    }, 2000);
+                }
+            } else {
+                console.warn('⚠️ No se encontró la imagen del código de barras en el DOM');
+                cleanupAndPrint();
+            }
 
             Utils.showNotification('✅ Etiqueta enviada a impresión', 'success');
 

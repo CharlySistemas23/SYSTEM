@@ -1,0 +1,73 @@
+{
+  "name": "opal-co",
+  "version": "1.0.8",
+  "description": "Opal & Co - Sistema de Gestión",
+  "author": "Opal & Co",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start":         "electron .",
+    "dist":          "electron-builder --win --x64",
+    "dist:portable": "electron-builder --win portable --x64"
+  },
+  "build": {
+    "appId":       "com.opalco.sistema",
+    "productName": "Opal & Co",
+    "copyright":   "Opal & Co",
+    "directories": {
+      "output": "dist"
+    },
+    "extraResources": [
+      {
+        "from":   "../Sistema",
+        "to":     "frontend",
+        "filter": [
+          "**/*",
+          "!node_modules/**",
+          "!tests/**",
+          "!test-results/**",
+          "!playwright.config.js",
+          "!remove-debug-logs.js",
+          "!start.js",
+          "!package.json",
+          "!package-lock.json"
+        ]
+      }
+    ],
+    "files": [
+      "main.js",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis",     "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "assets/icon.ico",
+      "sign": null,
+      "signingHashAlgorithms": null
+    },
+    "nsis": {
+      "oneClick":                        false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut":           true,
+      "createStartMenuShortcut":         true,
+      "shortcutName":                    "Opal & Co",
+      "installerIcon":                   "assets/icon.ico",
+      "uninstallerIcon":                 "assets/icon.ico"
+    },
+    "publish": {
+      "provider": "github",
+      "owner":    "CharlySistemas23",
+      "repo":     "opal-co-releases",
+      "private":  false
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron":         "^29.4.6",
+    "electron-builder": "^24.13.3"
+  }
+}

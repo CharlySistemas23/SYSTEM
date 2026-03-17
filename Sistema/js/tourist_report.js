@@ -4,6 +4,7 @@
 const TouristReport = {
     initialized: false,
     isExporting: false, // Flag para prevenir múltiples exportaciones simultáneas
+    _branchChangedListenerAttached: false,
 
     async init() {
         try {
@@ -298,9 +299,11 @@ const TouristReport = {
         let branchId = null;
         if (branchFilterValue && branchFilterValue !== 'all' && branchFilterValue !== '') {
             branchId = branchFilterValue;
-        } else if (isMasterAdmin && (!branchFilterValue || branchFilterValue === 'all')) {
-            branchId = null; // Todas las sucursales
+        } else if (isMasterAdmin && branchFilterEl) {
+            // Master admin con filtro visible: permitir "Todas"
+            branchId = branchFilterValue === 'all' ? null : currentBranchId;
         } else {
+            // Primera carga o usuarios no master: usar sucursal actual para evitar pantalla vacía/inconsistente
             branchId = currentBranchId;
         }
         
@@ -392,8 +395,8 @@ const TouristReport = {
         let branchId = null;
         if (branchFilterValue && branchFilterValue !== 'all' && branchFilterValue !== '') {
             branchId = branchFilterValue;
-        } else if (isMasterAdmin && (!branchFilterValue || branchFilterValue === 'all')) {
-            branchId = null; // Todas las sucursales
+        } else if (isMasterAdmin && branchFilterEl) {
+            branchId = branchFilterValue === 'all' ? null : currentBranchId;
         } else {
             branchId = currentBranchId;
         }
@@ -2677,17 +2680,20 @@ const TouristReport = {
             });
         }
         
-        // Escuchar cambios de sucursal desde el header para sincronizar el dropdown
-        window.addEventListener('branch-changed', async (e) => {
-            const updatedFilter = document.getElementById('tourist-branch-filter');
-            if (updatedFilter && e.detail && e.detail.branchId) {
-                // Sincronizar dropdown con la sucursal seleccionada en el header
-                updatedFilter.value = e.detail.branchId;
-                // Recargar llegadas con el nuevo filtro
-                const date = document.getElementById('arrivals-date')?.value || Utils.formatDate(new Date(), 'YYYY-MM-DD');
-                await this.changeDate(date);
-            }
-        });
+        // Escuchar cambios de sucursal desde el header para sincronizar el dropdown (una sola vez)
+        if (!this._branchChangedListenerAttached) {
+            window.addEventListener('branch-changed', async (e) => {
+                const updatedFilter = document.getElementById('tourist-branch-filter');
+                if (updatedFilter && e.detail && e.detail.branchId) {
+                    // Sincronizar dropdown con la sucursal seleccionada en el header
+                    updatedFilter.value = e.detail.branchId;
+                    // Recargar llegadas con el nuevo filtro
+                    const date = document.getElementById('arrivals-date')?.value || Utils.formatDate(new Date(), 'YYYY-MM-DD');
+                    await this.changeDate(date);
+                }
+            });
+            this._branchChangedListenerAttached = true;
+        }
     },
 
     /**

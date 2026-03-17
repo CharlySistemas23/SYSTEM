@@ -1327,45 +1327,23 @@ const Inventory = {
                             }
                         }
 
+                        // Modo seguro: no ocultar ni borrar automáticamente piezas no verificadas,
+                        // porque una respuesta parcial/transitoria del servidor puede provocar subconteos.
+                        verifiedItems.push(item);
                         ghostItems.push(item.id);
-                        console.warn(`⚠️ Item fantasma detectado: ${item.id} (${item.sku || item.name || 'sin nombre'})`);
+                        console.warn(`⚠️ Item no verificado (se mantiene visible): ${item.id} (${item.sku || item.name || 'sin nombre'})`);
                     }
                 } catch (error) {
+                    // Ante error transitorio, mantener visible el item.
+                    verifiedItems.push(item);
                     ghostItems.push(item.id);
-                    console.warn(`⚠️ Error verificando item ${item.id}:`, error);
+                    console.warn(`⚠️ Error verificando item ${item.id} (se mantiene visible):`, error);
                 }
             }
             
-            // Limpiar items fantasma si se detectaron
+            // No borrar automáticamente items "fantasma" para evitar pérdidas visuales de inventario.
             if (ghostItems.length > 0) {
-                console.warn(`⚠️ Se detectaron ${ghostItems.length} items fantasma. Limpiando...`);
-                
-                // Eliminar de IndexedDB
-                try {
-                        for (const ghostId of ghostItems) {
-                            try {
-                            await DB.delete('inventory_items', ghostId);
-                            console.log(`✅ Item fantasma eliminado: ${ghostId}`);
-                            } catch (e) {
-                                console.error(`Error eliminando item fantasma ${ghostId}:`, e);
-                        }
-                    }
-                    
-                    // También eliminar de sync_queue si existe
-                    const syncQueue = await DB.getAll('sync_queue') || [];
-                    for (const queueItem of syncQueue) {
-                        if (queueItem.type === 'inventory_item' && ghostItems.includes(queueItem.entity_id)) {
-                            try {
-                                await DB.delete('sync_queue', queueItem.id);
-                                console.log(`✅ Item fantasma eliminado de sync_queue: ${queueItem.id}`);
-                            } catch (e) {
-                                console.error(`Error eliminando de sync_queue:`, e);
-                            }
-                        }
-                    }
-                } catch (cleanupError) {
-                    console.error('Error en limpieza de items fantasma:', cleanupError);
-                }
+                console.warn(`⚠️ ${ghostItems.length} items no verificados (modo seguro: sin borrado automático).`);
             }
             } // fin else (!skipGhostVerification)
             
@@ -1385,42 +1363,42 @@ const Inventory = {
                 }
             }
             
-            // Si se detectaron items fantasma, mostrar advertencia
+            // Si se detectaron items no verificados, mostrar advertencia
             if (ghostItems.length > 0) {
-                console.warn(`⚠️ Se limpiaron ${ghostItems.length} items fantasma de la base de datos`);
+                console.warn(`⚠️ Se detectaron ${ghostItems.length} items no verificados`);
                 if (typeof Utils !== 'undefined' && Utils.showNotification) {
-                    Utils.showNotification(`${ghostItems.length} items fantasma eliminados automáticamente`, 'info');
+                    Utils.showNotification(`${ghostItems.length} items no verificados detectados (sin borrado automático)`, 'info');
                 }
             }
             
-            // PASO 3: Eliminar duplicados antes de mostrar
-            // Agrupar por SKU + branch_id, manteniendo el más reciente o el sincronizado
-            const itemsByKey = new Map();
+            // PASO 3: Eliminar duplicados reales antes de mostrar
+            // IMPORTANTE: deduplicar por SKU + branch colapsa piezas distintas del mismo modelo.
+            // Para inventario, cada pieza debe conservarse; solo removemos duplicados por id.
+            const itemsById = new Map();
             for (const item of verifiedItems) {
-                const key = `${item.sku || item.id}_${item.branch_id || 'no-branch'}`;
-                
-                if (!itemsByKey.has(key)) {
-                    itemsByKey.set(key, item);
+                const key = String(item?.id || '');
+                if (!key) continue;
+
+                if (!itemsById.has(key)) {
+                    itemsById.set(key, item);
                 } else {
-                    const existing = itemsByKey.get(key);
-                    // Preferir el que tiene server_id (está sincronizado)
+                    const existing = itemsById.get(key);
                     if (item.server_id && !existing.server_id) {
-                        itemsByKey.set(key, item);
+                        itemsById.set(key, item);
                     } else if (existing.server_id && !item.server_id) {
-                        // Mantener el existente
+                        // Mantener existente
                     } else {
-                        // Si ambos tienen o no tienen server_id, usar el más reciente por updated_at
                         const existingUpdated = existing.updated_at ? new Date(existing.updated_at) : new Date(0);
                         const currentUpdated = item.updated_at ? new Date(item.updated_at) : new Date(0);
                         if (currentUpdated > existingUpdated) {
-                            itemsByKey.set(key, item);
+                            itemsById.set(key, item);
                         }
                     }
                 }
             }
-            
-            const uniqueItems = Array.from(itemsByKey.values());
-            console.log(`🔍 [Paso 3 Inventory] Deduplicación: ${verifiedItems.length} → ${uniqueItems.length} items únicos`);
+
+            const uniqueItems = Array.from(itemsById.values());
+            console.log(`🔍 [Paso 3 Inventory] Deduplicación por id: ${verifiedItems.length} → ${uniqueItems.length}`);
             
             // Ahora aplicar filtros
             let items = uniqueItems;
@@ -1482,16 +1460,6 @@ const Inventory = {
             const statusFilter = document.getElementById('inventory-status-filter')?.value;
             if (statusFilter) {
                 items = items.filter(item => item.status === statusFilter);
-            } else {
-                // Por defecto, excluir SOLO items vendidos con stock <= 0
-                // NO excluir items disponibles aunque tengan stock 0 (pueden ser nuevos)
-                items = items.filter(item => {
-                    const stock = item.stock_actual ?? 0;
-                    // Solo excluir si está marcado como vendida Y tiene stock <= 0
-                    if (item.status === 'vendida' && stock <= 0) return false;
-                    // Incluir todos los demás items (disponibles, apartados, reparación, etc.)
-                    return true;
-                });
             }
 
             // NOTA: El filtrado por sucursal ya se aplicó arriba (líneas 587-604)

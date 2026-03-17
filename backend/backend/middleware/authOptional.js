@@ -3,7 +3,7 @@ import { query } from '../config/database.js';
 
 // ⚡ PERFORMANCE FIX: Cache usuario by token para evitar query BD en cada request
 const userCache = new Map();
-const CACHE_TTL = 30000; // 30 segundos
+const CACHE_TTL = parseInt(process.env.AUTH_OPTIONAL_CACHE_TTL_MS || '300000', 10); // 5 minutos por defecto
 
 const getCachedUser = (token) => {
   const entry = userCache.get(token);
@@ -20,7 +20,7 @@ const setCachedUser = (token, user) => {
 };
 
 // Normalizar UUID a minúsculas para comparaciones consistentes (BD vs headers/query)
-const normalizeBranchId = (id) => {
+export const normalizeBranchId = (id) => {
   if (id == null || id === '') return null;
   const s = String(id).trim();
   return s ? s.toLowerCase() : null;
@@ -112,15 +112,13 @@ export const authenticateOptional = async (req, res, next) => {
             let effectiveBranchId;
             if (isMasterAdmin && headerBranchId && isUUID(headerBranchId)) {
               effectiveBranchId = headerBranchId;
+            } else if (headerBranchId && isUUID(headerBranchId) && branchIds.includes(headerBranchId)) {
+              // Empleados con acceso multi-sucursal pueden operar en la sucursal seleccionada
+              effectiveBranchId = headerBranchId;
             } else if (rawBranchId) {
               effectiveBranchId = rawBranchId;
-            } else if (headerBranchId && isUUID(headerBranchId) && branchIds.includes(headerBranchId)) {
-              effectiveBranchId = headerBranchId;
             } else if (branchIds.length > 0) {
               effectiveBranchId = branchIds[0];
-            } else if (!isMasterAdmin && headerBranchId && isUUID(headerBranchId)) {
-              // Fallback: empleado sin branch_id/branch_ids en BD — confiar en x-branch-id del front
-              effectiveBranchId = headerBranchId;
             } else {
               effectiveBranchId = null;
             }
@@ -135,6 +133,10 @@ export const authenticateOptional = async (req, res, next) => {
               username: user.username,
               employeeId: user.employee_id,
               role,
+              permissions: Array.isArray(user.permissions) ? user.permissions : [],
+              permissions_by_branch: user.permissions_by_branch && typeof user.permissions_by_branch === 'object'
+                ? user.permissions_by_branch
+                : {},
               branchId: effectiveBranchId,
               branchIds: allowedBranchIds.length ? allowedBranchIds : (effectiveBranchId ? [effectiveBranchId] : []),
               isMasterAdmin,
@@ -193,6 +195,10 @@ export const authenticateOptional = async (req, res, next) => {
             username: user.username,
             employeeId: user.employee_id,
             role,
+            permissions: Array.isArray(user.permissions) ? user.permissions : [],
+            permissions_by_branch: user.permissions_by_branch && typeof user.permissions_by_branch === 'object'
+              ? user.permissions_by_branch
+              : {},
             branchId: userBranchId,
             branchIds: userBranchIds.length ? userBranchIds : (rawUserBranchId ? [rawUserBranchId] : []),
             isMasterAdmin,
@@ -277,7 +283,8 @@ export const requireBranchAccess = (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({ error: 'Autenticación requerida para esta operación' });
   }
-  const branchId = req.params?.branchId || req.body?.branch_id || req.query?.branch_id;
+  const rawBranchId = req.params?.branchId || req.body?.branch_id || req.query?.branch_id;
+  const branchId = normalizeBranchId(rawBranchId);
   
   if (!branchId) {
     return next(); // Si no hay branchId, continuar (algunas rutas no lo requieren)
@@ -290,8 +297,11 @@ export const requireBranchAccess = (req, res, next) => {
 
   // Verificar que el usuario tenga acceso a esta sucursal (comparar como UUID normalizado a minúsculas)
   const userBranchIds = (req.user.branchIds || []).map(b => normalizeBranchId(b)).filter(Boolean);
-  const bid = normalizeBranchId(branchId);
-  if (bid && !userBranchIds.includes(bid)) {
+  const userPrimaryBranchId = normalizeBranchId(req.user.branchId);
+  const allowedBranchIds = userPrimaryBranchId && !userBranchIds.includes(userPrimaryBranchId)
+    ? [...userBranchIds, userPrimaryBranchId]
+    : userBranchIds;
+  if (branchId && !allowedBranchIds.includes(branchId)) {
     return res.status(403).json({ error: 'No tienes acceso a esta sucursal' });
   }
 

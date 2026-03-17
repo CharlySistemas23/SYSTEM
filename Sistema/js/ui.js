@@ -586,45 +586,23 @@ const UI = {
         
         // Verificar configuración de API desde la base de datos (fuente de verdad)
         let apiUrl = null;
-        let hasToken = false;
         try {
             if (typeof DB !== 'undefined') {
                 const urlSetting = await DB.get('settings', 'api_url');
                 apiUrl = urlSetting?.value || null;
             }
-            // Verificar token (en API o localStorage)
-            hasToken = (typeof API !== 'undefined' && API.token) || !!localStorage.getItem('api_token');
-            
-            // Verificar si el socket está realmente conectado
-            const hasSocket = typeof API !== 'undefined' && API.socket && API.socket.connected;
             
             // Asegurar que API.baseURL esté sincronizado con la base de datos
             if (apiUrl && typeof API !== 'undefined' && API.baseURL !== apiUrl) {
                 API.baseURL = apiUrl;
-            }
-            
-            // Si hay URL y token pero no socket, actualizar online basado en socket
-            if (apiUrl && hasToken && !hasSocket && typeof online === 'undefined') {
-                online = false; // Si no hay socket, considerar desconectado
-            } else if (apiUrl && hasToken && hasSocket) {
-                online = true; // Si hay socket conectado, considerar conectado
             }
         } catch (error) {
             console.error('Error verificando API:', error);
         }
         
         // Función helper para actualizar el estado
-        const updateState = (statusEl, textEl, syncBtn, apiUrl, hasToken, online, syncing) => {
+        const updateState = (statusEl, textEl, syncBtn, apiUrl, online, syncing) => {
             if (!statusEl || !textEl) return;
-            
-            // Verificar socket si está disponible
-            const hasSocket = typeof API !== 'undefined' && API.socket && API.socket.connected;
-            const isReallyConnected = online && hasSocket;
-            
-            // Lógica de estado:
-            // 1. Si NO hay apiUrl → "API no configurado" (rojo)
-            // 2. Si hay apiUrl pero NO hay token → "Offline" (gris)
-            // 3. Si hay apiUrl Y hay token → "Online" o "Offline" según conexión real
             
             if (!apiUrl) {
                 // Caso 1: No hay URL configurada
@@ -649,9 +627,8 @@ const UI = {
                     };
                 }
             } else {
-                // Caso 2 y 3: Hay URL configurada
-                // Usar isReallyConnected si está disponible, sino usar online
-                const finalOnline = typeof isReallyConnected !== 'undefined' ? isReallyConnected : online;
+                // Hay URL configurada: usar estado de conectividad real ya calculado
+                const finalOnline = !!online;
                 statusEl.className = `status-indicator ${finalOnline ? 'online' : 'offline'}`;
                 textEl.textContent = syncing ? 'Sincronizando...' : (finalOnline ? 'Online' : 'Offline');
                 textEl.style.color = '';
@@ -680,24 +657,22 @@ const UI = {
                 
                 // Re-verificar valores actualizados
                 let retryApiUrl = null;
-                let retryHasToken = false;
                 try {
                     if (typeof DB !== 'undefined') {
                         const urlSetting = await DB.get('settings', 'api_url');
                         retryApiUrl = urlSetting?.value || null;
                     }
-                    retryHasToken = (typeof API !== 'undefined' && API.token) || !!localStorage.getItem('api_token');
                 } catch (error) {
                     console.error('Error en retry:', error);
                 }
                 
-                updateState(retryStatusEl, retryTextEl, retrySyncBtn, retryApiUrl, retryHasToken, online, syncing);
+                updateState(retryStatusEl, retryTextEl, retrySyncBtn, retryApiUrl, online, syncing);
             }, 100);
             return;
         }
         
         // Actualizar estado con los valores actuales
-        updateState(statusEl, textEl, syncBtn, apiUrl, hasToken, online, syncing);
+        updateState(statusEl, textEl, syncBtn, apiUrl, online, syncing);
     },
 
     // Mostrar/ocultar elementos de navegación solo para admin

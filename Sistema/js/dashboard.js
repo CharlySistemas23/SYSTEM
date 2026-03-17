@@ -453,11 +453,9 @@ const Dashboard = {
                         const freshArrivals = metrics.arrivals || [];
                         for (const sale of freshSales) { try { await DB.put('sales', sale); } catch (e) {} }
                         for (const arrival of freshArrivals) { try { await DB.put('agency_arrivals', arrival); } catch (e) {} }
-                        const beforeIds = new Set((allSales || []).map(s => s.id));
-                        const afterIds = new Set(freshSales.map(s => s.id));
-                        if (beforeIds.size !== afterIds.size || [...beforeIds].some(id => !afterIds.has(id))) {
-                            await this.loadDashboard(showAllBranches);
-                        }
+                        // Evitar recursión: este sync corre dentro de loadDashboard().
+                        // Recargar aquí puede entrar en bucle (cache local histórica vs respuesta parcial de API).
+                        // Los cambios frescos se reflejan por auto-refresh/eventos o próxima navegación.
                     } catch (e) {
                         console.warn('Sync dashboard background:', e);
                         this.nextAllowedLoadAt = Date.now() + this.loadCooldownMs;

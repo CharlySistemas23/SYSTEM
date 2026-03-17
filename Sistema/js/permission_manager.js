@@ -159,7 +159,13 @@ const PermissionManager = {
             ? BranchManager.getCurrentBranchId()
             : null;
         const pbb = user.permissions_by_branch && typeof user.permissions_by_branch === 'object' ? user.permissions_by_branch : {};
-        const branchPerms = (branchId && pbb[branchId] && Array.isArray(pbb[branchId])) ? pbb[branchId] : null;
+        const normalizedBranchId = branchId ? String(branchId).trim().toLowerCase() : null;
+        const branchKey = branchId && pbb[branchId]
+            ? branchId
+            : (normalizedBranchId && pbb[normalizedBranchId]
+                ? normalizedBranchId
+                : Object.keys(pbb).find(k => String(k).trim().toLowerCase() === normalizedBranchId));
+        const branchPerms = (branchKey && Array.isArray(pbb[branchKey])) ? pbb[branchKey] : null;
 
         // permissions_by_branch con lista no vacía: si incluye 'all' o el permiso, conceder.
         // Si no lo incluye, hacer fallback a permisos globales o rol (no denegar solo por no estar en la lista).

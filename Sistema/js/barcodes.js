@@ -352,12 +352,47 @@
         }
     },
 
+    async findInventoryItemByScanCode(scanCode, format = 'CODE128') {
+        try {
+            const code = String(scanCode || '').trim().replace(/\r?\n/g, '');
+            if (!code) return null;
+
+            if (format === 'EAN8') {
+                return await this.findItemByEAN8(code);
+            }
+
+            let item = await DB.getByIndex('inventory_items', 'barcode', code);
+            if (item) return item;
+
+            const allItems = await DB.getAll('inventory_items', null, null, { filterByBranch: false }) || [];
+            const norm = v => String(v || '').trim().replace(/\r?\n/g, '');
+            const lowerCode = code.toLowerCase();
+
+            return allItems.find(invItem => {
+                const barcode = norm(invItem.barcode);
+                const sku = norm(invItem.sku);
+
+                if (barcode === code || sku === code) return true;
+                if (barcode.toLowerCase() === lowerCode || sku.toLowerCase() === lowerCode) return true;
+
+                const barcodeAsEAN8 = this.toEAN8(barcode);
+                const skuAsEAN8 = this.toEAN8(sku);
+                if (barcodeAsEAN8 === code || skuAsEAN8 === code) return true;
+
+                return false;
+            }) || null;
+        } catch (e) {
+            console.error('Error buscando item por código escaneado:', e);
+            return null;
+        }
+    },
+
     async handlePOSScan(barcode, format) {
         try {
             // Si es EAN8 (8 dígitos), buscar primero en inventario (productos), luego en guías/vendedores/agencias
             const barcodeClean = String(barcode || '').trim().replace(/\r?\n/g, '');
             if (format === 'EAN8') {
-                const item = await this.findItemByEAN8(barcodeClean);
+                const item = await this.findInventoryItemByScanCode(barcodeClean, 'EAN8');
                 if (item) {
                     if (item.status === 'disponible') {
                         if (window.POS && window.POS.cart) {
@@ -375,18 +410,26 @@
                     }
                     return;
                 }
+
+                if (window.POS?.trySetGuideAgencyOrSellerByBarcode) {
+                    const matchedCatalog = await window.POS.trySetGuideAgencyOrSellerByBarcode(barcodeClean);
+                    if (matchedCatalog) return;
+                }
+
                 // Si no es producto, intentar guía/vendedor/agencia (pueden usar códigos numéricos de 8 dígitos)
-                const norm = v => String(v || '').trim().replace(/\r?\n/g, '');
+                const norm = v => Utils.normalizeBarcodeValue ? Utils.normalizeBarcodeValue(v) : String(v || '').trim().replace(/\r?\n/g, '');
+                const candidateMatch = (item, type, value) => {
+                    const candidates = Utils.getEntityBarcodeCandidates ? Utils.getEntityBarcodeCandidates(item, type) : [];
+                    return candidates.includes(norm(value));
+                };
                 const matchesCode = (item, val) => {
-                    const b = norm(item.barcode);
-                    const c = norm(item.code);
                     const v = norm(val);
-                    return b === v || c === v || b.toLowerCase() === v.toLowerCase() || c.toLowerCase() === v.toLowerCase();
+                    return [item.barcode, item.code, item.codigo].map(norm).filter(Boolean).includes(v);
                 };
                 let agency = await DB.getByIndex('catalog_agencies', 'barcode', barcodeClean);
                 if (!agency) {
                     const all = await DB.getAll('catalog_agencies', null, null, { filterByBranch: false }) || [];
-                    agency = all.find(a => matchesCode(a, barcodeClean) && a.active);
+                    agency = all.find(a => (matchesCode(a, barcodeClean) || candidateMatch(a, 'agency', barcodeClean)) && a.active);
                 }
                 if (agency && window.POS?.setAgency) {
                     await window.POS.setAgency(agency);
@@ -396,7 +439,7 @@
                 let guide = await DB.getByIndex('catalog_guides', 'barcode', barcodeClean);
                 if (!guide) {
                     const all = await DB.getAll('catalog_guides', null, null, { filterByBranch: false }) || [];
-                    guide = all.find(g => matchesCode(g, barcodeClean) && g.active !== false);
+                    guide = all.find(g => (matchesCode(g, barcodeClean) || candidateMatch(g, 'guide', barcodeClean)) && g.active !== false);
                 }
                 if (guide && window.POS?.setGuide) {
                     await window.POS.setGuide(guide);
@@ -406,7 +449,7 @@
                 let seller = await DB.getByIndex('catalog_sellers', 'barcode', barcodeClean);
                 if (!seller) {
                     const all = await DB.getAll('catalog_sellers', null, null, { filterByBranch: false }) || [];
-                    seller = all.find(s => matchesCode(s, barcodeClean) && s.active !== false);
+                    seller = all.find(s => (matchesCode(s, barcodeClean) || candidateMatch(s, 'seller', barcodeClean)) && s.active !== false);
                 }
                 if (seller && window.POS?.setSeller) {
                     await window.POS.setSeller(seller);
@@ -418,22 +461,30 @@
             }
             
             // Si es CODE128, buscar primero en agencias/guías/vendedores, luego en inventario
-            const norm = v => String(v || '').trim().replace(/\r?\n/g, '');
+            const norm = v => Utils.normalizeBarcodeValue ? Utils.normalizeBarcodeValue(v) : String(v || '').trim().replace(/\r?\n/g, '');
+            const candidateMatch = (item, type, value) => {
+                const candidates = Utils.getEntityBarcodeCandidates ? Utils.getEntityBarcodeCandidates(item, type) : [];
+                return candidates.includes(norm(value));
+            };
             const matchesCode = (item, val) => {
-                const b = norm(item.barcode);
-                const c = norm(item.code);
                 const v = norm(val);
-                return b === v || c === v ||
-                    b.toLowerCase() === v.toLowerCase() || c.toLowerCase() === v.toLowerCase();
+                return [item.barcode, item.code, item.codigo].map(norm).filter(Boolean).includes(v);
             };
             const findByBarcode = async (store, indexVal) => {
                 let r = await DB.getByIndex(store, 'barcode', indexVal);
                 if (!r) {
                     const all = await DB.getAll(store, null, null, { filterByBranch: false }) || [];
-                    r = all.find(x => matchesCode(x, indexVal));
+                    const type = store === 'catalog_agencies' ? 'agency' : store === 'catalog_guides' ? 'guide' : store === 'catalog_sellers' ? 'seller' : '';
+                    r = all.find(x => matchesCode(x, indexVal) || (type && candidateMatch(x, type, indexVal)));
                 }
                 return r;
             };
+
+            if (window.POS?.trySetGuideAgencyOrSellerByBarcode) {
+                const matchedCatalog = await window.POS.trySetGuideAgencyOrSellerByBarcode(barcodeClean);
+                if (matchedCatalog) return;
+            }
+
             // PASO 0: Verificar si es una agencia (ANTES de guías, para que tenga prioridad)
             let agency = await findByBarcode('catalog_agencies', barcodeClean);
             if (agency && agency.active) {
@@ -478,7 +529,7 @@
             }
             
             // PASO 3: Buscar producto (CODE128 también puede ser producto)
-            const item = await DB.getByIndex('inventory_items', 'barcode', barcodeClean);
+            const item = await this.findInventoryItemByScanCode(barcodeClean, 'CODE128');
             if (item) {
                 if (item.status === 'disponible') {
                     // Verificar si ya está en el carrito
@@ -677,7 +728,7 @@
             }
             
             // Buscar en inventario
-            const item = await DB.getByIndex('inventory_items', 'barcode', barcode);
+            const item = await this.findInventoryItemByScanCode(barcode, 'CODE128');
             if (item) {
                 Utils.showNotification(`Pieza encontrada: ${item.name}`, 'success');
                 // Switch to inventory module

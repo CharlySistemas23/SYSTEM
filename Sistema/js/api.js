@@ -2,6 +2,14 @@
 
 // URL del servidor Railway. Se usa como fallback para nuevos equipos sin configuración.
 const DEFAULT_RAILWAY_URL = 'https://backend-production-6260.up.railway.app';
+const ELECTRON_PROXY_URL = 'http://127.0.0.1:19200/proxy';
+
+function isElectronDesktopRuntime() {
+    return typeof window !== 'undefined'
+        && window.location
+        && window.location.hostname === '127.0.0.1'
+        && window.location.port === '19200';
+}
 
 const API = {
     baseURL: null,
@@ -15,11 +23,21 @@ const API = {
     async init() {
         // Cargar configuración desde settings
         try {
+            if (isElectronDesktopRuntime()) {
+                this.baseURL = ELECTRON_PROXY_URL;
+                await DB.put('settings', {
+                    key: 'api_url',
+                    value: ELECTRON_PROXY_URL
+                }).catch(() => {});
+            }
+
             const urlSetting = await DB.get('settings', 'api_url');
             const savedURL = urlSetting?.value || null;
 
             // Usar URL guardada o por defecto (nuevos equipos quedan conectados automáticamente)
-            const rawURL = savedURL || DEFAULT_RAILWAY_URL;
+            const rawURL = isElectronDesktopRuntime()
+                ? ELECTRON_PROXY_URL
+                : (savedURL || DEFAULT_RAILWAY_URL);
             
             // CRÍTICO: Asegurar que la URL esté correctamente formateada
             if (rawURL) {
@@ -179,13 +197,18 @@ const API = {
 
             if (!response.ok) {
                 let errorMessage = 'Error al iniciar sesión';
+                let errorCode = null;
                 try {
                     const error = await response.json();
                     errorMessage = error.error || error.message || `Error ${response.status}: ${response.statusText}`;
+                    errorCode = error.code || null;
                 } catch (e) {
                     errorMessage = `Error ${response.status}: ${response.statusText}`;
                 }
-                throw new Error(errorMessage);
+                const requestError = new Error(errorMessage);
+                requestError.status = response.status;
+                requestError.code = errorCode;
+                throw requestError;
             }
 
             const data = await response.json();
@@ -381,11 +404,8 @@ const API = {
             this.socket.on('connect', () => {
                 console.log('✅ Conectado al servidor en tiempo real');
                 this.reconnectAttempts = 0;
-                
-                // Actualizar estado de sincronización en todos los lugares
-                if (typeof UI !== 'undefined' && UI.updateSyncStatus) {
-                    UI.updateSyncStatus(true, false);
-                }
+
+                // Topbar: usar chequeo real por /health para evitar parpadeos
                 // También actualizar vía App si está disponible
                 if (typeof window.App !== 'undefined' && window.App.updateTopbarStatus) {
                     window.App.updateTopbarStatus();
@@ -407,11 +427,8 @@ const API = {
                 }
                 
                 console.log(`❌ Desconectado del servidor. Razón: ${reason}`);
-                
-                // Actualizar estado de sincronización en todos los lugares
-                if (typeof UI !== 'undefined' && UI.updateSyncStatus) {
-                    UI.updateSyncStatus(false, false);
-                }
+
+                // Topbar: usar chequeo real por /health para evitar parpadeos
                 // También actualizar vía App si está disponible
                 if (typeof window.App !== 'undefined' && window.App.updateTopbarStatus) {
                     window.App.updateTopbarStatus();
@@ -431,11 +448,8 @@ const API = {
                 console.error('   URL intentada:', this.baseURL);
                 console.error('   Token presente:', !!this.token);
                 console.error('   Detalles del error:', error);
-                
-                // Actualizar estado de sincronización
-                if (typeof UI !== 'undefined' && UI.updateSyncStatus) {
-                    UI.updateSyncStatus(false, false);
-                }
+
+                // Topbar: usar chequeo real por /health para evitar parpadeos
                 if (typeof window.App !== 'undefined' && window.App.updateTopbarStatus) {
                     window.App.updateTopbarStatus();
                 }
@@ -458,11 +472,8 @@ const API = {
             
             this.socket.on('reconnect_failed', () => {
                 console.error('❌ Falló la reconexión después de múltiples intentos');
-                
-                // Actualizar estado de sincronización
-                if (typeof UI !== 'undefined' && UI.updateSyncStatus) {
-                    UI.updateSyncStatus(false, false);
-                }
+
+                // Topbar: usar chequeo real por /health para evitar parpadeos
                 if (typeof window.App !== 'undefined' && window.App.updateTopbarStatus) {
                     window.App.updateTopbarStatus();
                 }

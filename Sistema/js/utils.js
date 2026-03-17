@@ -914,16 +914,78 @@ const Utils = {
         return afterDiscount * (multiplier || 0) / 100;
     },
 
+    sanitizeBarcodeToken(value) {
+        return String(value || '')
+            .toUpperCase()
+            .replace(/[^A-Z0-9]/g, '');
+    },
+
+    normalizeBarcodeValue(value) {
+        return String(value || '')
+            .trim()
+            .replace(/\r?\n/g, '')
+            .replace(/[\s\-_]/g, '')
+            .toUpperCase();
+    },
+
+    buildStableBarcode(prefix, entity, fallbackLabel) {
+        const idToken = this.sanitizeBarcodeToken(entity?.id);
+        const nameToken = this.sanitizeBarcodeToken(entity?.name || fallbackLabel || 'CATALOG');
+        const baseToken = idToken || nameToken || Date.now().toString();
+
+        let hash = 2166136261;
+        for (let i = 0; i < baseToken.length; i++) {
+            hash ^= baseToken.charCodeAt(i);
+            hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+        }
+        const hashToken = (hash >>> 0).toString(36).toUpperCase().padStart(6, '0').slice(-6);
+        const tailToken = (idToken || nameToken).slice(-8).padStart(8, '0');
+        return `${prefix}${tailToken}${hashToken}`;
+    },
+
+    getEntityBarcodeCandidates(entity, type) {
+        const normalizedType = String(type || '').toLowerCase();
+        const prefix = normalizedType === 'seller' ? 'SELL' : normalizedType === 'guide' ? 'GUIDE' : normalizedType === 'agency' ? 'AG' : '';
+        const variants = new Set();
+        const addVariant = (value) => {
+            const normalized = this.normalizeBarcodeValue(value);
+            if (normalized) variants.add(normalized);
+        };
+
+        const nameToken = this.sanitizeBarcodeToken(entity?.name);
+        const firstNameToken = this.sanitizeBarcodeToken(String(entity?.name || '').split(/\s+/)[0]);
+        const codeToken = this.sanitizeBarcodeToken(entity?.code || entity?.codigo);
+        const idToken = this.sanitizeBarcodeToken(entity?.id);
+
+        addVariant(entity?.barcode);
+        addVariant(entity?.code);
+        addVariant(entity?.codigo);
+
+        if (prefix) {
+            addVariant(this.buildStableBarcode(prefix, entity, normalizedType.toUpperCase()));
+
+            const seedTokens = [nameToken, firstNameToken, codeToken, idToken].filter(Boolean);
+            for (const seed of seedTokens) {
+                addVariant(`${prefix}${seed}`);
+                addVariant(`${prefix}${seed.slice(0, 8)}`);
+                addVariant(`${prefix}${seed.slice(0, 10)}`);
+
+                const maxLen = Math.min(seed.length, 10);
+                for (let len = 4; len <= maxLen; len++) {
+                    addVariant(`${prefix}${seed.slice(0, len)}`);
+                }
+            }
+        }
+
+        return Array.from(variants);
+    },
+
     // Generar código de barras para vendedor
     generateSellerBarcode(seller) {
         if (seller.barcode && seller.barcode.trim() !== '' && seller.barcode !== 'Sin código') {
             return seller.barcode;
         }
-        // Usar ID o nombre para generar código único
-        const base = seller.id ? seller.id.replace(/[^A-Z0-9]/gi, '').substring(0, 8).toUpperCase() : 
-                     seller.name ? seller.name.replace(/[^A-Z0-9]/gi, '').substring(0, 8).toUpperCase() : 
-                     Date.now().toString().slice(-6);
-        return `SELL${base}`;
+        return this.buildStableBarcode('SELL', seller, 'SELLER');
     },
 
     // Generar código de barras para guía
@@ -931,11 +993,7 @@ const Utils = {
         if (guide.barcode && guide.barcode.trim() !== '' && guide.barcode !== 'Sin código') {
             return guide.barcode;
         }
-        // Usar ID o nombre para generar código único
-        const base = guide.id ? guide.id.replace(/[^A-Z0-9]/gi, '').substring(0, 8).toUpperCase() : 
-                     guide.name ? guide.name.replace(/[^A-Z0-9]/gi, '').substring(0, 8).toUpperCase() : 
-                     Date.now().toString().slice(-6);
-        return `GUIDE${base}`;
+        return this.buildStableBarcode('GUIDE', guide, 'GUIDE');
     },
 
     // Generar código de barras para agencia
@@ -943,11 +1001,7 @@ const Utils = {
         if (agency.barcode && agency.barcode.trim() !== '' && agency.barcode !== 'Sin código') {
             return agency.barcode;
         }
-        // Usar ID o nombre para generar código único
-        const base = agency.id ? agency.id.replace(/[^A-Z0-9]/gi, '').substring(0, 8).toUpperCase() : 
-                     agency.name ? agency.name.replace(/[^A-Z0-9]/gi, '').substring(0, 8).toUpperCase() : 
-                     Date.now().toString().slice(-6);
-        return `AG${base}`;
+        return this.buildStableBarcode('AG', agency, 'AGENCY');
     },
 
     // Generar código de barras para empleado

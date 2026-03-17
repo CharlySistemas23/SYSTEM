@@ -1238,6 +1238,237 @@ const SyncManager = {
                         }
                         break;
 
+                    case 'catalog_seller':
+                        if (item.data === 'delete' || (item.data && item.data.action === 'delete')) {
+                            try {
+                                if (typeof API === 'undefined' || typeof API.deleteSeller !== 'function') {
+                                    throw new Error('API.deleteSeller no disponible');
+                                }
+                                await API.deleteSeller(item.entity_id);
+                                await DB.delete('sync_queue', item.id);
+                                successCount++;
+                            } catch (error) {
+                                console.error('Error eliminando vendedor en servidor:', error);
+                                throw error;
+                            }
+                        } else {
+                            entityData = await DB.get('catalog_sellers', item.entity_id);
+                            if (entityData) {
+                                try {
+                                    if (typeof API === 'undefined') throw new Error('API no disponible');
+                                    if (typeof API.createSeller !== 'function' || typeof API.updateSeller !== 'function') {
+                                        throw new Error('API de vendedores no disponible');
+                                    }
+
+                                    const isUUID = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ''));
+                                    const oldLocalId = entityData.id;
+                                    const serverId = isUUID(entityData.server_id) ? entityData.server_id : (isUUID(entityData.id) ? entityData.id : null);
+
+                                    const payload = {
+                                        ...entityData,
+                                        id: serverId || undefined,
+                                        name: entityData.name,
+                                        code: entityData.code || entityData.codigo || (entityData.name || '').trim(),
+                                        barcode: entityData.barcode || null,
+                                        active: entityData.active !== false
+                                    };
+
+                                    let synced;
+                                    if (serverId) {
+                                        synced = await API.updateSeller(serverId, payload);
+                                    } else {
+                                        synced = await API.createSeller(payload);
+                                    }
+
+                                    const finalData = {
+                                        ...entityData,
+                                        ...(synced || {}),
+                                        id: (synced && synced.id) ? synced.id : (serverId || oldLocalId),
+                                        server_id: (synced && synced.id) ? synced.id : (serverId || null),
+                                        sync_status: 'synced',
+                                        updated_at: new Date().toISOString()
+                                    };
+
+                                    await DB.put('catalog_sellers', finalData, { autoBranchId: false });
+                                    if (oldLocalId && finalData.id && oldLocalId !== finalData.id) {
+                                        try { await DB.delete('catalog_sellers', oldLocalId); } catch (e) {}
+                                    }
+
+                                    await DB.delete('sync_queue', item.id);
+                                    successCount++;
+                                } catch (error) {
+                                    console.error('Error sincronizando vendedor:', error);
+                                    throw error;
+                                }
+                            } else {
+                                console.warn(`⚠️ Vendedor ${item.entity_id} no encontrado localmente, eliminando de cola`);
+                                await DB.delete('sync_queue', item.id);
+                            }
+                        }
+                        break;
+
+                    case 'catalog_agency':
+                        if (item.data === 'delete' || (item.data && item.data.action === 'delete')) {
+                            try {
+                                if (typeof API === 'undefined' || typeof API.deleteAgency !== 'function') {
+                                    throw new Error('API.deleteAgency no disponible');
+                                }
+                                await API.deleteAgency(item.entity_id);
+                                await DB.delete('sync_queue', item.id);
+                                successCount++;
+                            } catch (error) {
+                                console.error('Error eliminando agencia en servidor:', error);
+                                throw error;
+                            }
+                        } else {
+                            entityData = await DB.get('catalog_agencies', item.entity_id);
+                            if (entityData) {
+                                try {
+                                    if (typeof API === 'undefined') throw new Error('API no disponible');
+                                    if (typeof API.createAgency !== 'function' || typeof API.updateAgency !== 'function') {
+                                        throw new Error('API de agencias no disponible');
+                                    }
+
+                                    const isUUID = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ''));
+                                    const oldLocalId = entityData.id;
+                                    const serverId = isUUID(entityData.server_id) ? entityData.server_id : (isUUID(entityData.id) ? entityData.id : null);
+
+                                    const payload = {
+                                        ...entityData,
+                                        id: serverId || undefined,
+                                        name: entityData.name,
+                                        code: entityData.code || entityData.codigo || (entityData.name || '').trim(),
+                                        barcode: entityData.barcode || null,
+                                        active: entityData.active !== false
+                                    };
+
+                                    let synced;
+                                    if (serverId) {
+                                        synced = await API.updateAgency(serverId, payload);
+                                    } else {
+                                        synced = await API.createAgency(payload);
+                                    }
+
+                                    const finalData = {
+                                        ...entityData,
+                                        ...(synced || {}),
+                                        id: (synced && synced.id) ? synced.id : (serverId || oldLocalId),
+                                        server_id: (synced && synced.id) ? synced.id : (serverId || null),
+                                        sync_status: 'synced',
+                                        updated_at: new Date().toISOString()
+                                    };
+
+                                    await DB.put('catalog_agencies', finalData, { autoBranchId: false });
+                                    if (oldLocalId && finalData.id && oldLocalId !== finalData.id) {
+                                        try { await DB.delete('catalog_agencies', oldLocalId); } catch (e) {}
+                                    }
+
+                                    await DB.delete('sync_queue', item.id);
+                                    successCount++;
+                                } catch (error) {
+                                    console.error('Error sincronizando agencia:', error);
+                                    throw error;
+                                }
+                            } else {
+                                console.warn(`⚠️ Agencia ${item.entity_id} no encontrada localmente, eliminando de cola`);
+                                await DB.delete('sync_queue', item.id);
+                            }
+                        }
+                        break;
+
+                    case 'catalog_guide':
+                        if (item.data === 'delete' || (item.data && item.data.action === 'delete')) {
+                            try {
+                                if (typeof API === 'undefined' || typeof API.deleteGuide !== 'function') {
+                                    throw new Error('API.deleteGuide no disponible');
+                                }
+                                await API.deleteGuide(item.entity_id);
+                                await DB.delete('sync_queue', item.id);
+                                successCount++;
+                            } catch (error) {
+                                console.error('Error eliminando guía en servidor:', error);
+                                throw error;
+                            }
+                        } else {
+                            entityData = await DB.get('catalog_guides', item.entity_id);
+                            if (entityData) {
+                                try {
+                                    if (typeof API === 'undefined') throw new Error('API no disponible');
+                                    if (typeof API.createGuide !== 'function' || typeof API.updateGuide !== 'function') {
+                                        throw new Error('API de guías no disponible');
+                                    }
+
+                                    const isUUID = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ''));
+                                    const oldLocalId = entityData.id;
+                                    const serverId = isUUID(entityData.server_id) ? entityData.server_id : (isUUID(entityData.id) ? entityData.id : null);
+
+                                    let finalAgencyId = entityData.agency_id || null;
+                                    if (finalAgencyId && !isUUID(finalAgencyId)) {
+                                        try {
+                                            const localAgency = await DB.get('catalog_agencies', finalAgencyId);
+                                            if (localAgency && localAgency.name && typeof API.getAgencies === 'function') {
+                                                const backendAgencies = await API.getAgencies({ search: localAgency.name });
+                                                const matched = (backendAgencies || []).find(a => String(a.name || '').trim().toUpperCase() === String(localAgency.name || '').trim().toUpperCase());
+                                                finalAgencyId = matched && matched.id ? matched.id : null;
+                                            } else {
+                                                finalAgencyId = null;
+                                            }
+                                        } catch (e) {
+                                            finalAgencyId = null;
+                                        }
+                                    }
+
+                                    const payload = {
+                                        ...entityData,
+                                        id: serverId || undefined,
+                                        agency_id: finalAgencyId,
+                                        name: entityData.name,
+                                        code: entityData.code || entityData.codigo || (entityData.name || '').trim(),
+                                        barcode: entityData.barcode || null,
+                                        active: entityData.active !== false
+                                    };
+
+                                    if (!payload.agency_id) {
+                                        console.warn(`⚠️ Guía ${item.entity_id} sin agencia válida, eliminando de cola`);
+                                        await DB.delete('sync_queue', item.id);
+                                        break;
+                                    }
+
+                                    let synced;
+                                    if (serverId) {
+                                        synced = await API.updateGuide(serverId, payload);
+                                    } else {
+                                        synced = await API.createGuide(payload);
+                                    }
+
+                                    const finalData = {
+                                        ...entityData,
+                                        ...(synced || {}),
+                                        id: (synced && synced.id) ? synced.id : (serverId || oldLocalId),
+                                        server_id: (synced && synced.id) ? synced.id : (serverId || null),
+                                        agency_id: payload.agency_id,
+                                        sync_status: 'synced',
+                                        updated_at: new Date().toISOString()
+                                    };
+
+                                    await DB.put('catalog_guides', finalData, { autoBranchId: false });
+                                    if (oldLocalId && finalData.id && oldLocalId !== finalData.id) {
+                                        try { await DB.delete('catalog_guides', oldLocalId); } catch (e) {}
+                                    }
+
+                                    await DB.delete('sync_queue', item.id);
+                                    successCount++;
+                                } catch (error) {
+                                    console.error('Error sincronizando guía:', error);
+                                    throw error;
+                                }
+                            } else {
+                                console.warn(`⚠️ Guía ${item.entity_id} no encontrada localmente, eliminando de cola`);
+                                await DB.delete('sync_queue', item.id);
+                            }
+                        }
+                        break;
+
                     case 'arrival_rate_rule':
                         // Manejar eliminaciones
                         if (item.data === 'delete') {

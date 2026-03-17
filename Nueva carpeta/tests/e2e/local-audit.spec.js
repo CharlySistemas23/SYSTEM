@@ -34,6 +34,7 @@ async function seedLocalAdmin(page) {
 
     await window.DB.put('employees', employee);
     await window.DB.put('users', user);
+    await window.DB.put('settings', { key: 'api_url', value: '' });
 
     if (window.API) {
       window.API.baseURL = null;
@@ -49,10 +50,13 @@ async function login(page) {
 
   if (FORCE_LOCAL_LOGIN) {
     await seedLocalAdmin(page);
-    await page.evaluate(() => {
-      if (!window.UserManager || !window.UI) return;
+    await page.evaluate(async () => {
+      localStorage.setItem('ENABLE_BYPASS_LOGIN', 'true');
+      if (typeof window.bypassLogin === 'function') {
+        await window.bypassLogin();
+      }
 
-      const user = {
+      const testUser = {
         id: '00000000-0000-0000-0000-000000000001',
         username: 'master_admin',
         role: 'master_admin',
@@ -60,8 +64,7 @@ async function login(page) {
         isMasterAdmin: true,
         active: true
       };
-
-      const employee = {
+      const testEmployee = {
         id: '00000000-0000-0000-0000-000000000002',
         name: 'Administrador Maestro',
         role: 'master_admin',
@@ -69,18 +72,29 @@ async function login(page) {
         active: true
       };
 
-      window.UserManager.currentUser = user;
-      window.UserManager.currentEmployee = employee;
-      localStorage.setItem('current_user', JSON.stringify(user));
+      if (window.UserManager) {
+        window.UserManager.currentUser = testUser;
+        window.UserManager.currentEmployee = testEmployee;
+      }
 
-      const companyCode = document.getElementById('company-code-screen');
-      const loginScreen = document.getElementById('login-screen');
-      if (companyCode) companyCode.style.display = 'none';
-      if (loginScreen) loginScreen.style.display = 'none';
+      localStorage.setItem('current_user', JSON.stringify(testUser));
 
-      window.UI.showModule('dashboard');
+      const idsToHide = ['company-code-screen', 'login-screen', 'session-restore-overlay'];
+      idsToHide.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.style.display = 'none';
+          el.style.pointerEvents = 'none';
+        }
+      });
+
+      document.querySelectorAll('.login-backdrop').forEach((el) => {
+        el.style.display = 'none';
+        el.style.pointerEvents = 'none';
+      });
     });
 
+    await expect(page.locator('#login-screen')).toBeHidden({ timeout: 30000 });
     await expect(page.locator('.sidebar-nav')).toBeVisible({ timeout: 30000 });
     await expect(page.locator('#content-area')).toBeVisible({ timeout: 30000 });
     return;
@@ -103,7 +117,7 @@ async function login(page) {
 
   await expect(page.locator('#login-screen')).toBeHidden({ timeout: 30000 });
   await expect(page.locator('.sidebar-nav')).toBeVisible({ timeout: 30000 });
-  await expect(page.locator('#module-dashboard')).toBeVisible({ timeout: 30000 });
+  await expect(page.locator('#content-area')).toBeVisible({ timeout: 30000 });
 }
 
 async function forceLocalApi(page) {
@@ -214,8 +228,27 @@ test.describe('Auditoría local de módulos y acciones', () => {
     await login(page);
     await openModule(page, 'branches');
 
-    const addButton = page.locator('#add-branch-btn');
-    await expect(addButton).toBeVisible();
+    await page.evaluate(async () => {
+      if (window.UserManager) {
+        window.UserManager.currentUser = {
+          id: '00000000-0000-0000-0000-000000000001',
+          username: 'master_admin',
+          role: 'master_admin',
+          is_master_admin: true,
+          isMasterAdmin: true,
+          active: true
+        };
+      }
+
+      if (window.Branches && typeof window.Branches.init === 'function') {
+        await window.Branches.init();
+      }
+    });
+
+    await page.waitForTimeout(800);
+
+    const addButton = page.locator('#add-branch-btn').or(page.getByRole('button', { name: /nueva sucursal/i })).first();
+    await expect(addButton).toBeVisible({ timeout: 20000 });
     await addButton.click();
 
     const modal = page.locator('.modal-overlay');

@@ -231,6 +231,8 @@ const UserManager = {
                 } catch (apiError) {
                     // Mostrar error más detallado
                     const errorMsg = apiError.message || 'Error desconocido';
+                    const errorStatus = Number(apiError.status || 0);
+                    const errorCode = String(apiError.code || '').toUpperCase();
                     
                     // Si es 401, el usuario/contraseña no coinciden en Railway
                     if (errorMsg.includes('401') || errorMsg.includes('incorrectos') || errorMsg.includes('Unauthorized')) {
@@ -251,6 +253,13 @@ const UserManager = {
                         } else {
                             return; // No hacer login local si las credenciales son incorrectas
                         }
+                    } else if (errorStatus === 503 || errorCode === 'DB_UNAVAILABLE' || errorMsg.includes('Base de datos no disponible')) {
+                        console.error('❌ Login con API falló: servidor central temporalmente no disponible');
+                        if (errorEl) {
+                            errorEl.textContent = 'Servidor central temporalmente no disponible. Intenta de nuevo en 1-2 minutos.';
+                            errorEl.style.display = 'block';
+                        }
+                        return;
                     } else if (errorMsg.includes('no configurada') || errorMsg.includes('Tiempo de espera') || errorMsg.includes('ECONNREFUSED') || errorMsg.includes('Failed to fetch')) {
                         // Silenciar estos errores (modo offline normal)
                         console.log('💡 Modo offline: Continuando con login local...');

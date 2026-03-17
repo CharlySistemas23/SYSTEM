@@ -1,6 +1,6 @@
 import express from 'express';
 import { query, getClient } from '../config/database.js';
-import { requireBranchAccess } from '../middleware/authOptional.js';
+import { requireBranchAccess, normalizeBranchId } from '../middleware/authOptional.js';
 import { emitSaleUpdate, emitInventoryUpdate } from '../socket/socketHandler.js';
 import { createOperationLogger, safeRollback } from '../utils/operation-helpers.js';
 import { getLockedInventoryItem } from '../utils/inventory-helpers.js';
@@ -59,7 +59,9 @@ const router = express.Router();
 router.get('/', requireBranchAccess, async (req, res) => {
   try {
     const { branch_id, start_date, end_date, status, seller_id, guide_id, agency_id } = req.query;
-    const branchId = branch_id || req.user.branchId;
+    const requestedBranchId = normalizeBranchId(branch_id);
+    const userBranchId = normalizeBranchId(req.user.branchId);
+    const branchId = requestedBranchId || userBranchId;
 
     let sql = `
       SELECT s.*,
@@ -79,7 +81,7 @@ router.get('/', requireBranchAccess, async (req, res) => {
       }
     } else {
       sql += ` AND s.branch_id = $${paramCount}`;
-      params.push(req.user.branchId);
+      params.push(userBranchId);
       paramCount++;
     }
 
@@ -146,7 +148,7 @@ router.get('/:id', requireBranchAccess, async (req, res) => {
     const sale = saleResult.rows[0];
 
     // Verificar acceso
-    if (!req.user.isMasterAdmin && sale.branch_id !== req.user.branchId) {
+    if (!req.user.isMasterAdmin && normalizeBranchId(sale.branch_id) !== normalizeBranchId(req.user.branchId)) {
       return res.status(403).json({ error: 'No tienes acceso a esta venta' });
     }
 
@@ -192,7 +194,14 @@ router.post('/', requireBranchAccess, async (req, res) => {
       return res.status(400).json({ error: validationError });
     }
 
-    const finalBranchId = branch_id || req.user.branchId;
+    const finalBranchId = normalizeBranchId(branch_id) || normalizeBranchId(req.user.branchId);
+    if (!req.user.isMasterAdmin) {
+      const allowedBranchIds = (req.user.branchIds || []).map(b => normalizeBranchId(b)).filter(Boolean);
+      if (!finalBranchId || !allowedBranchIds.includes(finalBranchId)) {
+        await safeRollback(client);
+        return res.status(403).json({ error: 'No tienes acceso a esta sucursal' });
+      }
+    }
     logSaleOperation('create_started', {
       branchId: finalBranchId,
       userId: req.user.id,
@@ -260,7 +269,7 @@ router.post('/', requireBranchAccess, async (req, res) => {
         const currentStock = inventoryItem.stock_actual || 0;
         const requestedQuantity = Number(item.quantity) || 1;
 
-        if (inventoryItem.branch_id && inventoryItem.branch_id !== finalBranchId) {
+        if (inventoryItem.branch_id && normalizeBranchId(inventoryItem.branch_id) !== normalizeBranchId(finalBranchId)) {
           await safeRollback(client);
           return res.status(400).json({ error: `El item ${item.name || item.sku || item.item_id} no pertenece a la sucursal de la venta` });
         }
@@ -586,7 +595,7 @@ router.put('/:id', requireBranchAccess, async (req, res) => {
           return res.status(400).json({ error: `Item ${newItem.item_id} no encontrado` });
         }
 
-        if (inventoryItem.branch_id && inventoryItem.branch_id !== (originalSale.branch_id || req.user.branchId)) {
+        if (inventoryItem.branch_id && normalizeBranchId(inventoryItem.branch_id) !== normalizeBranchId(originalSale.branch_id || req.user.branchId)) {
           await safeRollback(client);
           return res.status(400).json({ error: `El item ${newItem.name || newItem.sku || newItem.item_id} no pertenece a la sucursal de la venta` });
         }
@@ -856,7 +865,7 @@ router.delete('/:id', requireBranchAccess, async (req, res) => {
     const sale = saleResult.rows[0];
 
     // Verificar acceso
-    if (!req.user.isMasterAdmin && sale.branch_id !== req.user.branchId) {
+    if (!req.user.isMasterAdmin && normalizeBranchId(sale.branch_id) !== normalizeBranchId(req.user.branchId)) {
       await client.query('ROLLBACK');
       return res.status(403).json({ error: 'No tienes acceso a esta venta' });
     }

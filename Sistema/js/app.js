@@ -470,6 +470,14 @@ const App = {
                 }
             });
 
+            // Setup reload button (topbar) - equivalente a Ctrl+R
+            document.getElementById('topbar-reload-btn')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                window.location.reload();
+            });
+
             // Setup logout - solo debe activarse cuando se hace clic específicamente en el botón
             const setupLogout = () => {
                 const logoutBtn = document.getElementById('logout-btn');
@@ -2652,10 +2660,31 @@ const App = {
                 }
             }
             
-            // Verificar conexión real: URL, baseURL, token Y socket conectado
-            const hasToken = (typeof API !== 'undefined' && API.token) || !!localStorage.getItem('api_token');
-            const hasSocket = typeof API !== 'undefined' && API.socket && API.socket.connected;
-            const isConnected = apiUrl && typeof API !== 'undefined' && API.baseURL && hasToken && hasSocket;
+            // Verificar conexión real por /health (no depender de socket/token)
+            const isConfigured = apiUrl && typeof API !== 'undefined' && API.baseURL;
+            const healthOk = !!(isConfigured && typeof API.checkHealth === 'function' && await API.checkHealth({
+                timeoutMs: 5000,
+                cacheMs: 15000
+            }));
+
+            // Anti-parpadeo: requerir 2 fallos seguidos para pasar a Offline.
+            if (typeof this._topbarFailStreak !== 'number') this._topbarFailStreak = 0;
+            if (typeof this._topbarOnlineStable !== 'boolean') this._topbarOnlineStable = false;
+
+            if (healthOk) {
+                this._topbarFailStreak = 0;
+                this._topbarOnlineStable = true;
+            } else if (isConfigured) {
+                this._topbarFailStreak += 1;
+                if (this._topbarFailStreak >= 2) {
+                    this._topbarOnlineStable = false;
+                }
+            } else {
+                this._topbarFailStreak = 0;
+                this._topbarOnlineStable = false;
+            }
+
+            const isConnected = !!this._topbarOnlineStable;
             const isSyncing = typeof window.SyncManager !== 'undefined' ? window.SyncManager.isSyncing : false;
             
             // Actualizar estado en el topbar (ahora es async)

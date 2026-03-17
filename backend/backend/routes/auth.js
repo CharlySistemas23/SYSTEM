@@ -6,6 +6,28 @@ import { body, validationResult } from 'express-validator';
 
 const router = express.Router();
 
+// Cache liviano para /verify para reducir presión de BD en estaciones abiertas por horas.
+const verifyUserCache = new Map();
+const VERIFY_USER_CACHE_TTL_MS = parseInt(process.env.AUTH_VERIFY_CACHE_TTL_MS || '120000', 10); // 2 min
+
+const getCachedVerifyUser = (userId) => {
+  const key = String(userId || '');
+  if (!key) return null;
+  const entry = verifyUserCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > VERIFY_USER_CACHE_TTL_MS) {
+    verifyUserCache.delete(key);
+    return null;
+  }
+  return entry.user;
+};
+
+const setCachedVerifyUser = (userId, user) => {
+  const key = String(userId || '');
+  if (!key || !user) return;
+  verifyUserCache.set(key, { user, timestamp: Date.now() });
+};
+
 const isRailway = Boolean(
   process.env.RAILWAY_ENVIRONMENT_ID ||
   process.env.RAILWAY_PROJECT_ID ||
@@ -187,19 +209,25 @@ router.get('/verify', async (req, res) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    const userResult = await query(
-       `SELECT u.*, e.branch_id, e.branch_ids, e.role as employee_role, e.name as employee_name
-       FROM users u
-       LEFT JOIN employees e ON u.employee_id = e.id
-       WHERE u.id = $1 AND u.active = true`,
-      [decoded.userId]
-    );
+    let user = getCachedVerifyUser(decoded.userId);
+    if (!user) {
+      const userResult = await query(
+         `SELECT u.*, e.branch_id, e.branch_ids, e.role as employee_role, e.name as employee_name
+         FROM users u
+         LEFT JOIN employees e ON u.employee_id = e.id
+         WHERE u.id = $1 AND u.active = true`,
+        [decoded.userId],
+        1,
+        2000
+      );
 
-    if (userResult.rows.length === 0) {
-      return res.status(401).json({ error: 'Usuario no encontrado' });
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({ error: 'Usuario no encontrado' });
+      }
+
+      user = userResult.rows[0];
+      setCachedVerifyUser(decoded.userId, user);
     }
-
-    const user = userResult.rows[0];
     const userRole = user.role || user.employee_role;
     const isMasterAdmin = userRole === 'master_admin';
     const permissions = (user.permissions != null && Array.isArray(user.permissions))
