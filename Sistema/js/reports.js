@@ -2461,6 +2461,18 @@ const Reports = {
             let variableCostsDaily = 0;
             let arrivalCosts = 0;
             let bankCommissions = 0;
+            const normalizeCategory = (value) => (typeof Utils !== 'undefined' && Utils.normalizeCategoryKey)
+                ? Utils.normalizeCategoryKey(value)
+                : String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+            const isOperationalCost = (category) => (typeof Utils !== 'undefined' && Utils.isOperationalCostCategory)
+                ? Utils.isOperationalCostCategory(category)
+                : (normalizeCategory(category) !== 'costo_ventas' &&
+                   normalizeCategory(category) !== 'comisiones' &&
+                   normalizeCategory(category) !== 'comisiones_bancarias' &&
+                   normalizeCategory(category) !== 'pago_llegadas');
+            const parseAmount = (value) => (typeof Utils !== 'undefined' && Utils.parseAmount)
+                ? Utils.parseAmount(value)
+                : (parseFloat(value) || 0);
             
             // Calcular costos de llegadas desde cost_entries (fuente autorizada)
             const branchIdsForArrivals = branchId === null && branchIdsToInclude.length > 0 ? branchIdsToInclude : (branchId ? [branchId] : []);
@@ -2476,6 +2488,7 @@ const Reports = {
             const monthlyCosts = branchCosts.filter(c => {
                 const costDate = new Date(c.date || c.created_at);
                 return c.period_type === 'monthly' && 
+                       isOperationalCost(c.category) &&
                        c.recurring === true &&
                        costDate.getMonth() === targetDate.getMonth() &&
                        costDate.getFullYear() === targetDate.getFullYear();
@@ -2483,7 +2496,7 @@ const Reports = {
             for (const cost of monthlyCosts) {
                 // Usar 30 días fijos para prorrateo mensual (convención contable: $94,500/30 = $3,150)
                 const DAYS_PER_MONTH = 30;
-                fixedCostsDaily += (cost.amount || 0) / DAYS_PER_MONTH;
+                fixedCostsDaily += parseAmount(cost.amount) / DAYS_PER_MONTH;
             }
             
             // Costos semanales prorrateados
@@ -2492,24 +2505,26 @@ const Reports = {
                 const targetWeek = this.getWeekNumber(targetDate);
                 const costWeek = this.getWeekNumber(costDate);
                 return c.period_type === 'weekly' && 
+                       isOperationalCost(c.category) &&
                        c.recurring === true &&
                        targetWeek === costWeek &&
                        targetDate.getFullYear() === costDate.getFullYear();
             });
             for (const cost of weeklyCosts) {
-                fixedCostsDaily += (cost.amount || 0) / 7;
+                fixedCostsDaily += parseAmount(cost.amount) / 7;
             }
             
             // Costos anuales prorrateados
             const annualCosts = branchCosts.filter(c => {
                 const costDate = new Date(c.date || c.created_at);
                 return c.period_type === 'annual' && 
+                       isOperationalCost(c.category) &&
                        c.recurring === true &&
                        costDate.getFullYear() === targetDate.getFullYear();
             });
             for (const cost of annualCosts) {
                 const daysInYear = ((targetDate.getFullYear() % 4 === 0 && targetDate.getFullYear() % 100 !== 0) || (targetDate.getFullYear() % 400 === 0)) ? 366 : 365;
-                fixedCostsDaily += (cost.amount || 0) / daysInYear;
+                fixedCostsDaily += parseAmount(cost.amount) / daysInYear;
             }
             
             // Costos variables/diarios del día específico
@@ -2517,16 +2532,18 @@ const Reports = {
                 .filter(c => {
                     const costDate = c.date || c.created_at;
                     const costDateStr = costDate.split('T')[0];
-                    return costDateStr === dateStr &&
+                    if (costDateStr !== dateStr) {
+                        return false;
+                    }
+                    const categoryKey = normalizeCategory(c.category);
+                    if (categoryKey === 'comisiones_bancarias') {
+                        bankCommissions += parseAmount(c.amount);
+                        return false;
+                    }
+                    return isOperationalCost(c.category) &&
                            (c.period_type === 'one_time' || c.period_type === 'daily' || !c.period_type);
                 })
-                .reduce((sum, c) => {
-                    // Separar comisiones bancarias
-                    if (c.category === 'comisiones_bancarias') {
-                        bankCommissions += (c.amount || 0);
-                    }
-                    return sum + (c.amount || 0);
-                }, 0);
+                .reduce((sum, c) => sum + parseAmount(c.amount), 0);
             
             return { fixedCostsDaily, variableCostsDaily, arrivalCosts, bankCommissions };
         };
