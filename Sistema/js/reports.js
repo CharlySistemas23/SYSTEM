@@ -9480,6 +9480,16 @@ const Reports = {
                 const branchIdsToProcess = effectiveBranchIds.length > 0 ? effectiveBranchIds : (includeGlobalCosts ? [null] : []);
                 
                 for (const branchId of branchIdsToProcess) {
+                    const normalizeCategory = (value) => (typeof Utils !== 'undefined' && Utils.normalizeCategoryKey)
+                        ? Utils.normalizeCategoryKey(value)
+                        : String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+                    const isOperationalCost = (category) => (typeof Utils !== 'undefined' && Utils.isOperationalCostCategory)
+                        ? Utils.isOperationalCostCategory(category)
+                        : (normalizeCategory(category) !== 'costo_ventas' &&
+                           normalizeCategory(category) !== 'comisiones' &&
+                           normalizeCategory(category) !== 'comisiones_bancarias' &&
+                           normalizeCategory(category) !== 'pago_llegadas');
+
                     // CRÍTICO: Filtro estricto por sucursal
                     // Si branchId es null (costos globales), solo incluir costos sin branch_id
                     // Si branchId tiene valor, SOLO incluir costos de esa sucursal (excluir globales)
@@ -9502,7 +9512,7 @@ const Reports = {
                         const isMonthly = c.period_type === 'monthly';
                         // Aceptar si tiene recurring=true O si tiene type='fijo' (para compatibilidad)
                         const isRecurring = c.recurring === true || c.recurring === 'true' || c.type === 'fijo';
-                        const isValidCategory = c.category !== 'pago_llegadas' && c.category !== 'comisiones_bancarias';
+                        const isValidCategory = isOperationalCost(c.category);
                         return isMonthly && isRecurring && isValidCategory;
                     }));
                     console.log(`   📅 Costos mensuales encontrados: ${monthlyCosts.length} (únicos tras deduplicar recurrentes)`);
@@ -9530,7 +9540,7 @@ const Reports = {
                         // Para costos recurrentes semanales, aplicar si están en el mismo año
                         const isWeekly = c.period_type === 'weekly';
                         const isRecurring = c.recurring === true || c.recurring === 'true' || c.type === 'fijo';
-                        const isValidCategory = c.category !== 'pago_llegadas' && c.category !== 'comisiones_bancarias';
+                        const isValidCategory = isOperationalCost(c.category);
                         const isSameYear = targetDate.getFullYear() === costDate.getFullYear();
                         return isWeekly && isRecurring && isValidCategory && isSameYear;
                     }));
@@ -9555,7 +9565,7 @@ const Reports = {
                     const annualCosts = this.deduplicateRecurringCosts(branchCosts.filter(c => {
                         const isAnnual = c.period_type === 'annual' || c.period_type === 'yearly';
                         const isRecurring = c.recurring === true || c.recurring === 'true' || c.type === 'fijo';
-                        const isValidCategory = c.category !== 'pago_llegadas' && c.category !== 'comisiones_bancarias';
+                        const isValidCategory = isOperationalCost(c.category);
                         return isAnnual && isRecurring && isValidCategory;
                         // Removido el filtro de año porque los costos recurrentes anuales se aplican siempre
                         // que estén activos para ese año
@@ -9581,22 +9591,17 @@ const Reports = {
                         const costDate = c.date || c.created_at;
                         const costDateStr = costDate.split('T')[0];
                         return costDateStr === captureDate &&
-                               c.category !== 'pago_llegadas' &&
-                               c.category !== 'comisiones_bancarias' &&
+                               isOperationalCost(c.category) &&
                                (c.period_type === 'one_time' || c.period_type === 'daily' || !c.period_type);
                     });
                     for (const cost of variableCosts) {
-                        if (cost.category === 'comisiones_bancarias') {
-                            bankCommissions += (parseFloat(cost.amount) || 0);
-                        } else {
-                            const amount = parseFloat(cost.amount) || 0;
-                            variableCostsDaily += amount;
-                            variableCostsDetail.push({
-                                category: cost.category || 'Sin categoría',
-                                description: cost.description || cost.notes || '',
-                                amount: amount
-                            });
-                        }
+                        const amount = parseFloat(cost.amount) || 0;
+                        variableCostsDaily += amount;
+                        variableCostsDetail.push({
+                            category: cost.category || 'Sin categoría',
+                            description: cost.description || cost.notes || '',
+                            amount: amount
+                        });
                     }
                 }
             } catch (e) {
