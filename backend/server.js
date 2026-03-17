@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
@@ -53,8 +53,8 @@ const isRailway = Boolean(
 );
 const isProductionLike = process.env.NODE_ENV === 'production' || isRailway;
 
-// Configurar trust proxy para Railway (confiar solo en el primer proxy, más seguro)
-// Railway usa un solo proxy, así que 1 es suficiente y más seguro que true
+// Configurar trust proxy para Railway (confiar solo en el primer proxy, m├ís seguro)
+// Railway usa un solo proxy, as├¡ que 1 es suficiente y m├ís seguro que true
 app.set('trust proxy', 1);
 
 const parseConfiguredOrigins = () => {
@@ -77,16 +77,22 @@ const isOriginAllowed = (origin) => {
   const { allowAll, origins } = parseConfiguredOrigins();
   if (!origin) return true;
   if (allowAll) return true;
-  return origins.includes(origin);
+  return origins.some(o => {
+    if (o.startsWith('*.')) {
+      const suffix = o.slice(1); // '*.vercel.app' -> '.vercel.app'
+      return origin.endsWith(suffix);
+    }
+    return o === origin;
+  });
 };
 
-// Función helper para determinar orígenes permitidos (debe estar antes de Socket.IO)
+// Funci├│n helper para determinar or├¡genes permitidos (debe estar antes de Socket.IO)
 const getAllowedOrigins = () => {
   const { allowAll, origins } = parseConfiguredOrigins();
-  return allowAll ? true : origins; // true = permitir todos, array = lista específica
+  return allowAll ? true : origins; // true = permitir todos, array = lista espec├¡fica
 };
 
-// Configurar Socket.IO con la misma configuración CORS
+// Configurar Socket.IO con la misma configuraci├│n CORS
 const socketIOOrigins = getAllowedOrigins();
 const io = new Server(httpServer, {
   cors: {
@@ -98,7 +104,7 @@ const io = new Server(httpServer, {
   transports: ['websocket', 'polling']
 });
 
-// Importar Socket.IO handlers (después de crear io)
+// Importar Socket.IO handlers (despu├®s de crear io)
 import { setupSocketIO } from './socket/socketHandler.js';
 
 // Hacer io disponible globalmente para las rutas
@@ -112,8 +118,8 @@ const corsOptions = {
     }
 
     const { origins } = parseConfiguredOrigins();
-    // Rechazar si hay configuración explícita y el origen no está permitido
-    console.warn(`⚠️ CORS: Origen rechazado: ${origin}. Permitidos: ${origins.join(', ')}`);
+    // Rechazar si hay configuraci├│n expl├¡cita y el origen no est├í permitido
+    console.warn(`ÔÜá´©Å CORS: Origen rechazado: ${origin}. Permitidos: ${origins.join(', ')}`);
     callback(new Error(`CORS: Origen no permitido: ${origin}`));
   },
   credentials: true,
@@ -140,7 +146,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Handler explícito para OPTIONS (preflight) - debe estar antes de las rutas
+// Handler expl├¡cito para OPTIONS (preflight) - debe estar antes de las rutas
 app.options('*', (req, res) => {
   const origin = req.headers.origin;
 
@@ -156,25 +162,25 @@ app.options('*', (req, res) => {
   res.status(403).json({ error: 'CORS: Origen no permitido' });
 });
 
-// Middleware de seguridad (después de CORS para no interferir)
+// Middleware de seguridad (despu├®s de CORS para no interferir)
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Rate limiting (después de trust proxy)
-// Límite más permisivo para evitar bloqueos durante sincronización inicial
+// Rate limiting (despu├®s de trust proxy)
+// L├¡mite m├ís permisivo para evitar bloqueos durante sincronizaci├│n inicial
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutos
-  // Aumentamos significativamente el límite para operaciones de sincronización masivas
+  // Aumentamos significativamente el l├¡mite para operaciones de sincronizaci├│n masivas
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 20000, // 20,000 solicitudes por 15 minutos
-  message: 'Demasiadas solicitudes desde esta IP, intenta de nuevo más tarde.',
+  message: 'Demasiadas solicitudes desde esta IP, intenta de nuevo m├ís tarde.',
   standardHeaders: true,
   legacyHeaders: false,
-  // Permitir más solicitudes durante el inicio
+  // Permitir m├ís solicitudes durante el inicio
   skip: (req) => {
-    // Excluir endpoints críticos de sincronización inicial
+    // Excluir endpoints cr├¡ticos de sincronizaci├│n inicial
     const criticalPaths = [
       '/auth/verify',
       '/branches',
@@ -188,26 +194,26 @@ const limiter = rateLimit({
   }
 });
 
-// Rate limiter más permisivo para endpoints de sincronización
+// Rate limiter m├ís permisivo para endpoints de sincronizaci├│n
 const syncLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 50000, // 50,000 solicitudes para sincronización
+  max: 50000, // 50,000 solicitudes para sincronizaci├│n
   standardHeaders: true,
   legacyHeaders: false
 });
 
 // No aplicar rate limit a preflight OPTIONS para evitar bloquear CORS
-// Excluir endpoints críticos del rate limit (se usan frecuentemente durante inicio)
+// Excluir endpoints cr├¡ticos del rate limit (se usan frecuentemente durante inicio)
 app.use('/api/', (req, res, next) => {
   if (req.method === 'OPTIONS') return next();
   
-  // Endpoints críticos de sincronización inicial - usar limiter más permisivo
+  // Endpoints cr├¡ticos de sincronizaci├│n inicial - usar limiter m├ís permisivo
   const syncPaths = ['/branches', '/employees', '/catalogs/', '/exchange-rates'];
   if (syncPaths.some(path => req.path.includes(path))) {
     return syncLimiter(req, res, next);
   }
   
-  // Endpoints de autenticación - sin rate limit
+  // Endpoints de autenticaci├│n - sin rate limit
   if (req.path === '/auth/verify' || req.path === '/auth/login') {
     return next();
   }
@@ -237,7 +243,7 @@ app.get('/health', (req, res) => {
 });
 
 // Health check de BD: valida que Postgres responda (sin exponer datos).
-// Usa 1 intento para responder rápido en diagnósticos.
+// Usa 1 intento para responder r├ípido en diagn├│sticos.
 app.get('/health/db', async (req, res) => {
   try {
     const result = await dbQuery('SELECT 1 as ok', [], 1);
@@ -248,7 +254,7 @@ app.get('/health/db', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('❌ Health DB falló:', error?.message || error);
+    console.error('ÔØî Health DB fall├│:', error?.message || error);
     res.status(503).json({
       status: 'OK',
       db: 'ERROR',
@@ -259,10 +265,10 @@ app.get('/health/db', async (req, res) => {
   }
 });
 
-// Rutas públicas
+// Rutas p├║blicas
 app.use('/api/auth', authRoutes);
 
-// Rutas protegidas (autenticación opcional - funciona con o sin token)
+// Rutas protegidas (autenticaci├│n opcional - funciona con o sin token)
 // Usa authenticateOptional que acepta token O username+branch_id
 app.use('/api/branches', authenticateOptional, branchesRoutes);
 app.use('/api/employees', authenticateOptional, employeesRoutes);
@@ -280,11 +286,11 @@ app.use('/api/suppliers', authenticateOptional, suppliersRoutes);
 app.use('/api/purchase-orders', authenticateOptional, purchaseOrdersRoutes);
 app.use('/api/supplier-payments', authenticateOptional, supplierPaymentsRoutes);
 app.use('/api/tourist', authenticateOptional, touristRoutes);
-app.use('/api/exchange-rates', exchangeRatesRoutes); // Público, no requiere auth
+app.use('/api/exchange-rates', exchangeRatesRoutes); // P├║blico, no requiere auth
 app.use('/api/arrival-rules', authenticateOptional, arrivalRulesRoutes);
-app.use('/api/upload', authenticateOptional, uploadRoutes); // Autenticación opcional
+app.use('/api/upload', authenticateOptional, uploadRoutes); // Autenticaci├│n opcional
 if (!isProductionLike || process.env.ENABLE_DEBUG_ROUTES === 'true') {
-  app.use('/api/debug', authenticateOptional, debugRoutes); // Diagnóstico: conteos por sucursal
+  app.use('/api/debug', authenticateOptional, debugRoutes); // Diagn├│stico: conteos por sucursal
 }
 
 // Configurar Socket.IO
@@ -322,22 +328,22 @@ app.use((req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-// Función helper para ejecutar schema.sql de forma segura
+// Funci├│n helper para ejecutar schema.sql de forma segura
 async function executeSchemaSafely(pool) {
   const { readFileSync } = await import('fs');
   const { join } = await import('path');
   const schemaPath = join(__dirname, 'database', 'schema.sql');
   const schemaSQL = readFileSync(schemaPath, 'utf8');
   
-  // Dividir el schema en statements individuales usando una expresión regular más robusta
-  // Esto maneja correctamente CREATE TABLE multilínea, funciones, triggers, etc.
+  // Dividir el schema en statements individuales usando una expresi├│n regular m├ís robusta
+  // Esto maneja correctamente CREATE TABLE multil├¡nea, funciones, triggers, etc.
   
-  // Primero, normalizar el SQL: eliminar comentarios de línea y normalizar espacios
+  // Primero, normalizar el SQL: eliminar comentarios de l├¡nea y normalizar espacios
   let normalizedSQL = schemaSQL
-    .replace(/--[^\n]*/g, '') // Eliminar comentarios de línea
+    .replace(/--[^\n]*/g, '') // Eliminar comentarios de l├¡nea
     .replace(/\/\*[\s\S]*?\*\//g, ''); // Eliminar comentarios de bloque
   
-  // Dividir por punto y coma, pero respetando bloques entre paréntesis y funciones
+  // Dividir por punto y coma, pero respetando bloques entre par├®ntesis y funciones
   const statements = [];
   let currentStatement = '';
   let parenDepth = 0;
@@ -348,7 +354,7 @@ async function executeSchemaSafely(pool) {
     const char = normalizedSQL[i];
     const nextChars = normalizedSQL.substring(i, i + 10);
     
-    // Detectar inicio de función con $$ o $tag$
+    // Detectar inicio de funci├│n con $$ o $tag$
     if (char === '$' && !inDollarQuote) {
       const match = normalizedSQL.substring(i).match(/^\$([^$]*)\$/);
       if (match) {
@@ -360,7 +366,7 @@ async function executeSchemaSafely(pool) {
       }
     }
     
-    // Detectar fin de función
+    // Detectar fin de funci├│n
     if (inDollarQuote && normalizedSQL.substring(i).startsWith(dollarQuote)) {
       currentStatement += dollarQuote;
       i += dollarQuote.length - 1;
@@ -369,13 +375,13 @@ async function executeSchemaSafely(pool) {
       continue;
     }
     
-    // Si estamos dentro de una función, agregar todo sin procesar
+    // Si estamos dentro de una funci├│n, agregar todo sin procesar
     if (inDollarQuote) {
       currentStatement += char;
       continue;
     }
     
-    // Contar paréntesis para detectar bloques
+    // Contar par├®ntesis para detectar bloques
     if (char === '(') {
       parenDepth++;
     } else if (char === ')') {
@@ -384,7 +390,7 @@ async function executeSchemaSafely(pool) {
     
     currentStatement += char;
     
-    // Si encontramos punto y coma y no estamos dentro de paréntesis ni función, es el fin del statement
+    // Si encontramos punto y coma y no estamos dentro de par├®ntesis ni funci├│n, es el fin del statement
     if (char === ';' && parenDepth === 0 && !inDollarQuote) {
       const trimmed = currentStatement.trim();
       if (trimmed.length > 5 && !trimmed.match(/^\s*$/)) {
@@ -395,12 +401,12 @@ async function executeSchemaSafely(pool) {
     }
   }
   
-  // Agregar el último statement si existe
+  // Agregar el ├║ltimo statement si existe
   if (currentStatement.trim().length > 5) {
     statements.push(currentStatement.trim());
   }
   
-  console.log(`📋 Schema.sql dividido en ${statements.length} statements`);
+  console.log(`­ƒôï Schema.sql dividido en ${statements.length} statements`);
   
   // Separar statements por tipo para ejecutarlos en el orden correcto
   const createTables = [];
@@ -430,13 +436,13 @@ async function executeSchemaSafely(pool) {
     }
   }
   
-  console.log(`📊 Clasificados: ${createTables.length} tablas, ${createIndexes.length} índices, ${createFunctions.length} funciones, ${alterTables.length} alteraciones, ${otherStatements.length} otros`);
+  console.log(`­ƒôè Clasificados: ${createTables.length} tablas, ${createIndexes.length} ├¡ndices, ${createFunctions.length} funciones, ${alterTables.length} alteraciones, ${otherStatements.length} otros`);
   
   let executed = 0;
   let skipped = 0;
   let errors = 0;
   
-  // Función helper para ejecutar un statement
+  // Funci├│n helper para ejecutar un statement
   const executeStatement = async (statement, type, index) => {
     try {
       await pool.query(statement);
@@ -456,23 +462,23 @@ async function executeSchemaSafely(pool) {
         return false;
       }
       
-      // Para errores de "does not exist" en índices, verificar si es una columna faltante
+      // Para errores de "does not exist" en ├¡ndices, verificar si es una columna faltante
       if (errorMsg.includes('does not exist') && type === 'index') {
         // Si es un error de columna faltante, ignorarlo (puede ser una columna opcional)
         if (errorMsg.includes('column') && errorMsg.includes('does not exist')) {
-          // Ignorar errores de columnas faltantes en índices (pueden ser opcionales)
+          // Ignorar errores de columnas faltantes en ├¡ndices (pueden ser opcionales)
           skipped++;
           return false;
         }
-        // Para otros errores de "does not exist" en índices, puede ser que la tabla aún no existe
-        console.warn(`⚠️  Error en ${type} ${index + 1}: ${stmtError.message.substring(0, 80)}`);
+        // Para otros errores de "does not exist" en ├¡ndices, puede ser que la tabla a├║n no existe
+        console.warn(`ÔÜá´©Å  Error en ${type} ${index + 1}: ${stmtError.message.substring(0, 80)}`);
         errors++;
         return false;
       }
       
       // Para otros errores, loguear
       if (!errorMsg.includes('does not exist') || type === 'table') {
-        console.warn(`⚠️  Error en ${type} ${index + 1}: ${stmtError.message.substring(0, 80)}`);
+        console.warn(`ÔÜá´©Å  Error en ${type} ${index + 1}: ${stmtError.message.substring(0, 80)}`);
         errors++;
       }
       return false;
@@ -488,7 +494,7 @@ async function executeSchemaSafely(pool) {
   for (let i = 0; i < createTables.length; i++) {
     await executeStatement(createTables[i], 'table', i);
     if ((i + 1) % 10 === 0) {
-      console.log(`   ✅ ${i + 1}/${createTables.length} tablas procesadas...`);
+      console.log(`   Ô£à ${i + 1}/${createTables.length} tablas procesadas...`);
     }
   }
   
@@ -497,11 +503,11 @@ async function executeSchemaSafely(pool) {
     await executeStatement(alterTables[i], 'alter', i);
   }
   
-  // 4. Ejecutar CREATE INDEX (después de que las tablas existan)
+  // 4. Ejecutar CREATE INDEX (despu├®s de que las tablas existan)
   for (let i = 0; i < createIndexes.length; i++) {
     await executeStatement(createIndexes[i], 'index', i);
     if ((i + 1) % 20 === 0) {
-      console.log(`   ✅ ${i + 1}/${createIndexes.length} índices procesados...`);
+      console.log(`   Ô£à ${i + 1}/${createIndexes.length} ├¡ndices procesados...`);
     }
   }
   
@@ -510,12 +516,12 @@ async function executeSchemaSafely(pool) {
     await executeStatement(otherStatements[i], 'other', i);
   }
   
-  // 6. Reintentar índices que fallaron (puede que las tablas ya existan ahora)
-  // Solo reintentar índices que fallaron por "does not exist" (tabla), no por columnas faltantes
+  // 6. Reintentar ├¡ndices que fallaron (puede que las tablas ya existan ahora)
+  // Solo reintentar ├¡ndices que fallaron por "does not exist" (tabla), no por columnas faltantes
   let retryCount = 0;
-  const failedIndexes = []; // Guardar índices que fallaron por tabla no existente
+  const failedIndexes = []; // Guardar ├¡ndices que fallaron por tabla no existente
   
-  // Primera pasada: identificar índices que fallaron por tabla no existente
+  // Primera pasada: identificar ├¡ndices que fallaron por tabla no existente
   for (let i = 0; i < createIndexes.length; i++) {
     const statement = createIndexes[i];
     try {
@@ -537,23 +543,23 @@ async function executeSchemaSafely(pool) {
       await pool.query(statement);
       retryCount++;
     } catch (e) {
-      // Ignorar si aún falla
+      // Ignorar si a├║n falla
     }
   }
   
   if (retryCount > 0) {
-    console.log(`   🔄 ${retryCount} índices creados en reintento`);
+    console.log(`   ­ƒöä ${retryCount} ├¡ndices creados en reintento`);
     executed += retryCount;
   }
   
-  console.log(`✅ Schema ejecutado: ${executed} creados, ${skipped} ya existían, ${errors} errores`);
+  console.log(`Ô£à Schema ejecutado: ${executed} creados, ${skipped} ya exist├¡an, ${errors} errores`);
   return { executed, skipped, errors };
 }
 
-// Función para verificar si la base de datos necesita migración
+// Funci├│n para verificar si la base de datos necesita migraci├│n
 async function checkAndMigrate() {
   if (process.env.SKIP_AUTO_MIGRATE === 'true') {
-    console.log('⏭️  Auto-migración deshabilitada por SKIP_AUTO_MIGRATE');
+    console.log('ÔÅ¡´©Å  Auto-migraci├│n deshabilitada por SKIP_AUTO_MIGRATE');
     return;
   }
 
@@ -579,16 +585,16 @@ async function checkAndMigrate() {
       connectionTimeoutMillis: 15000
     });
 
-    console.log('🔄 Iniciando verificación y migración de base de datos...');
+    console.log('­ƒöä Iniciando verificaci├│n y migraci├│n de base de datos...');
     
     // SIEMPRE ejecutar schema.sql completo al inicio (es seguro porque usa IF NOT EXISTS)
-    console.log('📦 Ejecutando schema.sql completo para asegurar que todas las tablas existan...');
+    console.log('­ƒôª Ejecutando schema.sql completo para asegurar que todas las tablas existan...');
     try {
       await executeSchemaSafely(pool);
-      console.log('✅ Schema.sql ejecutado correctamente');
+      console.log('Ô£à Schema.sql ejecutado correctamente');
     } catch (schemaError) {
-      console.error('❌ Error ejecutando schema.sql:', schemaError.message);
-      // Continuar para verificar qué tablas existen
+      console.error('ÔØî Error ejecutando schema.sql:', schemaError.message);
+      // Continuar para verificar qu├® tablas existen
     }
 
     // Verificar todas las tablas relacionadas con suppliers
@@ -619,8 +625,8 @@ async function checkAndMigrate() {
     const missingTables = allRequiredTables.filter(t => !existingTables.includes(t));
     
     if (missingTables.length > 0) {
-      console.log(`⚠️  Aún faltan ${missingTables.length} tablas después de ejecutar schema: ${missingTables.join(', ')}`);
-      console.log('🔄 Intentando ejecutar schema.sql nuevamente para crear tablas faltantes...');
+      console.log(`ÔÜá´©Å  A├║n faltan ${missingTables.length} tablas despu├®s de ejecutar schema: ${missingTables.join(', ')}`);
+      console.log('­ƒöä Intentando ejecutar schema.sql nuevamente para crear tablas faltantes...');
       
       try {
         // Ejecutar schema.sql nuevamente para asegurar que se creen las tablas faltantes
@@ -639,50 +645,50 @@ async function checkAndMigrate() {
         const stillMissing = allRequiredTables.filter(t => !recheckExisting.includes(t));
         
         if (stillMissing.length > 0) {
-          console.warn(`⚠️  Aún faltan ${stillMissing.length} tablas: ${stillMissing.join(', ')}`);
-          console.log('💡 El servidor continuará, pero estas funcionalidades pueden no estar disponibles');
+          console.warn(`ÔÜá´©Å  A├║n faltan ${stillMissing.length} tablas: ${stillMissing.join(', ')}`);
+          console.log('­ƒÆí El servidor continuar├í, pero estas funcionalidades pueden no estar disponibles');
         } else {
-          console.log('✅ Todas las tablas requeridas están presentes después del segundo intento');
+          console.log('Ô£à Todas las tablas requeridas est├ín presentes despu├®s del segundo intento');
         }
       } catch (retryError) {
-        console.error('❌ Error en segundo intento de ejecutar schema:', retryError.message);
+        console.error('ÔØî Error en segundo intento de ejecutar schema:', retryError.message);
       }
     } else {
-      console.log('✅ Todas las tablas requeridas están presentes');
+      console.log('Ô£à Todas las tablas requeridas est├ín presentes');
     }
     
     // Continuar con migraciones adicionales (columnas, usuarios, etc.)
     try {
-      // Migración: columna permissions en users (idempotente)
+      // Migraci├│n: columna permissions en users (idempotente)
       try {
         const colCheck = await pool.query(`
           SELECT 1 FROM information_schema.columns
           WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'permissions'
         `);
         if (colCheck.rows.length === 0) {
-          console.log('🔄 Añadiendo columna permissions a users...');
+          console.log('­ƒöä A├▒adiendo columna permissions a users...');
           await pool.query(`ALTER TABLE users ADD COLUMN permissions JSONB DEFAULT NULL`);
-          console.log('✅ Columna users.permissions creada');
+          console.log('Ô£à Columna users.permissions creada');
         }
       } catch (colError) {
-        if (colError.code === '42701') console.log('ℹ️  Columna users.permissions ya existe');
-        else console.warn('⚠️  Migración permissions:', colError.message);
+        if (colError.code === '42701') console.log('Ôä╣´©Å  Columna users.permissions ya existe');
+        else console.warn('ÔÜá´©Å  Migraci├│n permissions:', colError.message);
       }
 
-      // Migración: columna permissions_by_branch en users (permisos por sucursal)
+      // Migraci├│n: columna permissions_by_branch en users (permisos por sucursal)
       try {
         const colCheckBranch = await pool.query(`
           SELECT 1 FROM information_schema.columns
           WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'permissions_by_branch'
         `);
         if (colCheckBranch.rows.length === 0) {
-          console.log('🔄 Añadiendo columna permissions_by_branch a users...');
+          console.log('­ƒöä A├▒adiendo columna permissions_by_branch a users...');
           await pool.query(`ALTER TABLE users ADD COLUMN permissions_by_branch JSONB DEFAULT NULL`);
-          console.log('✅ Columna users.permissions_by_branch creada');
+          console.log('Ô£à Columna users.permissions_by_branch creada');
         }
       } catch (colError) {
-        if (colError.code === '42701') console.log('ℹ️  Columna users.permissions_by_branch ya existe');
-        else console.warn('⚠️  Migración permissions_by_branch:', colError.message);
+        if (colError.code === '42701') console.log('Ôä╣´©Å  Columna users.permissions_by_branch ya existe');
+        else console.warn('ÔÜá´©Å  Migraci├│n permissions_by_branch:', colError.message);
       }
 
       // Crear usuario admin manualmente (solo si no existe)
@@ -690,7 +696,7 @@ async function checkAndMigrate() {
         const adminCheck = await pool.query(`SELECT id FROM users WHERE username = 'master_admin' LIMIT 1`);
         
         if (adminCheck.rows.length === 0) {
-          console.log('👤 Creando usuario admin maestro...');
+          console.log('­ƒæñ Creando usuario admin maestro...');
           
           // Crear sucursal principal si no existe
           await pool.query(`
@@ -699,7 +705,7 @@ async function checkAndMigrate() {
               '00000000-0000-0000-0000-000000000001',
               'Sucursal Principal',
               'MAIN',
-              'Dirección principal',
+              'Direcci├│n principal',
               '1234567890',
               'admin@opalco.com',
               true
@@ -709,8 +715,8 @@ async function checkAndMigrate() {
           
           const branchResult = await pool.query(`SELECT id FROM branches WHERE code = 'MAIN' LIMIT 1`);
           if (!branchResult.rows || branchResult.rows.length === 0) {
-            console.warn('⚠️  No se pudo encontrar la sucursal MAIN, continuando sin crear usuario admin');
-            console.log('💡 Puedes crear el usuario admin manualmente con: npm run create-admin');
+            console.warn('ÔÜá´©Å  No se pudo encontrar la sucursal MAIN, continuando sin crear usuario admin');
+            console.log('­ƒÆí Puedes crear el usuario admin manualmente con: npm run create-admin');
           } else {
             const branchId = branchResult.rows[0].id;
             
@@ -732,8 +738,8 @@ async function checkAndMigrate() {
             
             const employeeResult = await pool.query(`SELECT id FROM employees WHERE code = 'ADMIN' LIMIT 1`);
             if (!employeeResult.rows || employeeResult.rows.length === 0) {
-              console.warn('⚠️  No se pudo encontrar el empleado ADMIN, continuando sin crear usuario admin');
-              console.log('💡 Puedes crear el usuario admin manualmente con: npm run create-admin');
+              console.warn('ÔÜá´©Å  No se pudo encontrar el empleado ADMIN, continuando sin crear usuario admin');
+              console.log('­ƒÆí Puedes crear el usuario admin manualmente con: npm run create-admin');
             } else {
               const employeeId = employeeResult.rows[0].id;
               
@@ -754,16 +760,16 @@ async function checkAndMigrate() {
                 ON CONFLICT (id) DO NOTHING
               `, [passwordHash, employeeId]);
               
-              console.log('✅ Usuario master_admin creado');
-              console.log('📋 Credenciales: username=master_admin, PIN=1234');
+              console.log('Ô£à Usuario master_admin creado');
+              console.log('­ƒôï Credenciales: username=master_admin, PIN=1234');
             }
           }
         } else {
-          console.log('✅ Usuario master_admin ya existe');
+          console.log('Ô£à Usuario master_admin ya existe');
         }
       } catch (adminError) {
-        console.warn('⚠️  Error creando usuario admin (no crítico):', adminError.message);
-        console.log('💡 Puedes crear el usuario admin manualmente con: npm run create-admin');
+        console.warn('ÔÜá´©Å  Error creando usuario admin (no cr├¡tico):', adminError.message);
+        console.log('­ƒÆí Puedes crear el usuario admin manualmente con: npm run create-admin');
         // No lanzar error, continuar con el servidor
       }
       
@@ -778,7 +784,7 @@ async function checkAndMigrate() {
       `);
       
       if (!customersBranchCheck.rows[0].exists) {
-        console.log('🔄 Agregando branch_id a tabla customers...');
+        console.log('­ƒöä Agregando branch_id a tabla customers...');
         try {
           await pool.query(`
             ALTER TABLE customers 
@@ -787,12 +793,12 @@ async function checkAndMigrate() {
           await pool.query(`
             CREATE INDEX IF NOT EXISTS idx_customers_branch_id ON customers(branch_id);
           `);
-          console.log('✅ Columna branch_id agregada a customers');
+          console.log('Ô£à Columna branch_id agregada a customers');
         } catch (migrationError) {
           if (migrationError.code === '42701') {
-            console.log('ℹ️  branch_id ya existe en customers');
+            console.log('Ôä╣´©Å  branch_id ya existe en customers');
           } else {
-            console.error('⚠️  Error agregando branch_id a customers:', migrationError.message);
+            console.error('ÔÜá´©Å  Error agregando branch_id a customers:', migrationError.message);
           }
         }
       }
@@ -819,30 +825,30 @@ async function checkAndMigrate() {
           `);
           
           if (!dailySummaryCheck.rows[0].exists) {
-            console.log('🔄 Agregando daily_summary a tabla archived_quick_capture_reports...');
+            console.log('­ƒöä Agregando daily_summary a tabla archived_quick_capture_reports...');
             try {
               await pool.query(`
                 ALTER TABLE archived_quick_capture_reports 
                 ADD COLUMN daily_summary JSONB;
               `);
-              console.log('✅ Columna daily_summary agregada a archived_quick_capture_reports');
+              console.log('Ô£à Columna daily_summary agregada a archived_quick_capture_reports');
             } catch (migrationError) {
               if (migrationError.code === '42701') {
-                console.log('ℹ️  daily_summary ya existe en archived_quick_capture_reports');
+                console.log('Ôä╣´©Å  daily_summary ya existe en archived_quick_capture_reports');
               } else {
-                console.error('⚠️  Error agregando daily_summary a archived_quick_capture_reports:', migrationError.message);
+                console.error('ÔÜá´©Å  Error agregando daily_summary a archived_quick_capture_reports:', migrationError.message);
               }
             }
           }
         } else {
-          console.log('ℹ️  Tabla archived_quick_capture_reports no existe aún, se creará con el schema completo');
+          console.log('Ôä╣´©Å  Tabla archived_quick_capture_reports no existe a├║n, se crear├í con el schema completo');
         }
       } catch (dailySummaryError) {
-        console.error('⚠️  Error verificando/agregando daily_summary:', dailySummaryError.message);
-        // No bloquear el inicio del servidor si falla esta migración
+        console.error('ÔÜá´©Å  Error verificando/agregando daily_summary:', dailySummaryError.message);
+        // No bloquear el inicio del servidor si falla esta migraci├│n
       }
       
-      // ========== MIGRACIÓN: Nuevas columnas para inventory_items ==========
+      // ========== MIGRACI├ôN: Nuevas columnas para inventory_items ==========
       // Agregar columnas nuevas de forma segura (sin afectar datos existentes)
       const newInventoryColumns = [
         { name: 'subcategory', type: 'VARCHAR(100)' },
@@ -880,28 +886,28 @@ async function checkAndMigrate() {
           `, [column.name]);
           
           if (!columnCheck.rows[0].exists) {
-            console.log(`🔄 Agregando columna ${column.name} a inventory_items...`);
+            console.log(`­ƒöä Agregando columna ${column.name} a inventory_items...`);
             try {
               await pool.query(`
                 ALTER TABLE inventory_items 
                 ADD COLUMN ${column.name} ${column.type};
               `);
-              console.log(`✅ Columna ${column.name} agregada a inventory_items`);
+              console.log(`Ô£à Columna ${column.name} agregada a inventory_items`);
             } catch (migrationError) {
               if (migrationError.code === '42701') {
-                console.log(`ℹ️  ${column.name} ya existe en inventory_items`);
+                console.log(`Ôä╣´©Å  ${column.name} ya existe en inventory_items`);
               } else {
-                console.error(`⚠️  Error agregando ${column.name} a inventory_items:`, migrationError.message);
+                console.error(`ÔÜá´©Å  Error agregando ${column.name} a inventory_items:`, migrationError.message);
               }
             }
           }
         } catch (error) {
-          console.error(`⚠️  Error verificando columna ${column.name}:`, error.message);
-          // Continuar con las demás columnas
+          console.error(`ÔÜá´©Å  Error verificando columna ${column.name}:`, error.message);
+          // Continuar con las dem├ís columnas
         }
       }
       
-      // Modificar columna price para permitir NULL (precio sugerido puede estar vacío)
+      // Modificar columna price para permitir NULL (precio sugerido puede estar vac├¡o)
       try {
         const priceNullCheck = await pool.query(`
           SELECT is_nullable 
@@ -912,56 +918,56 @@ async function checkAndMigrate() {
         `);
         
         if (priceNullCheck.rows.length > 0 && priceNullCheck.rows[0].is_nullable === 'NO') {
-          console.log('🔄 Modificando columna price para permitir NULL...');
+          console.log('­ƒöä Modificando columna price para permitir NULL...');
           try {
             await pool.query(`
               ALTER TABLE inventory_items 
               ALTER COLUMN price DROP NOT NULL;
             `);
-            console.log('✅ Columna price ahora permite NULL');
+            console.log('Ô£à Columna price ahora permite NULL');
           } catch (error) {
-            console.error('⚠️  Error modificando columna price:', error.message);
+            console.error('ÔÜá´©Å  Error modificando columna price:', error.message);
           }
         }
       } catch (error) {
-        console.error('⚠️  Error verificando columna price:', error.message);
+        console.error('ÔÜá´©Å  Error verificando columna price:', error.message);
       }
     } catch (migrationError) {
-      console.error('⚠️  Error en migraciones adicionales:', migrationError.message);
-      // No crítico, continuar
+      console.error('ÔÜá´©Å  Error en migraciones adicionales:', migrationError.message);
+      // No cr├¡tico, continuar
     }
 
     await pool.end();
   } catch (error) {
-    console.error('⚠️  Error en auto-migración:', error.message);
-    console.log('💡 Puedes ejecutar manualmente: npm run migrate && npm run create-admin');
+    console.error('ÔÜá´©Å  Error en auto-migraci├│n:', error.message);
+    console.log('­ƒÆí Puedes ejecutar manualmente: npm run migrate && npm run create-admin');
   }
 }
 
-// Iniciar servidor después de verificar migración
+// Iniciar servidor despu├®s de verificar migraci├│n
 async function startServer() {
   if (isProductionLike) {
     if (!process.env.JWT_SECRET || typeof process.env.JWT_SECRET !== 'string') {
-      throw new Error('JWT_SECRET no configurado para entorno de producción');
+      throw new Error('JWT_SECRET no configurado para entorno de producci├│n');
     }
     if (!process.env.DATABASE_URL || typeof process.env.DATABASE_URL !== 'string') {
-      throw new Error('DATABASE_URL no configurado para entorno de producción');
+      throw new Error('DATABASE_URL no configurado para entorno de producci├│n');
     }
   }
 
   await checkAndMigrate();
   
-  // Mostrar configuración CORS al iniciar
+  // Mostrar configuraci├│n CORS al iniciar
   const rawOrigins = (process.env.ALLOWED_ORIGINS || process.env.CORS_ORIGIN || '').split(',').map(o => o.trim()).filter(Boolean);
   const corsInfo = rawOrigins.length === 0 
-    ? '(vacío - permitir todo)' 
+    ? '(vac├¡o - permitir todo)' 
     : rawOrigins.join(', ');
-  console.log(`🌍 CORS configurado - ALLOWED_ORIGINS: ${corsInfo}`);
+  console.log(`­ƒîì CORS configurado - ALLOWED_ORIGINS: ${corsInfo}`);
   
   httpServer.listen(PORT, () => {
-    console.log(`🚀 Servidor iniciado en puerto ${PORT}`);
-    console.log(`📡 Socket.IO habilitado para tiempo real`);
-    console.log(`🌍 Entorno: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`­ƒÜÇ Servidor iniciado en puerto ${PORT}`);
+    console.log(`­ƒôí Socket.IO habilitado para tiempo real`);
+    console.log(`­ƒîì Entorno: ${process.env.NODE_ENV || 'development'}`);
   });
 }
 
