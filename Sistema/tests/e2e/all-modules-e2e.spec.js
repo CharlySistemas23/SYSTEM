@@ -172,6 +172,52 @@ async function openModule(page, moduleName) {
   await expect(page.locator('#module-content')).not.toContainText('módulo no disponible', { timeout: 10000 });
 }
 
+async function closeAnyModal(page) {
+  const cancelButton = page.getByRole('button', { name: /cancelar/i }).first();
+  if (await cancelButton.isVisible().catch(() => false)) {
+    await cancelButton.click();
+  } else {
+    const closeButton = page.locator('.modal-close').first();
+    if (await closeButton.isVisible().catch(() => false)) {
+      await closeButton.click();
+    } else {
+      await page.evaluate(() => {
+        if (window.UI && typeof window.UI.closeModal === 'function') {
+          window.UI.closeModal();
+        }
+        const overlay = document.querySelector('.modal-overlay');
+        if (overlay && overlay.parentNode) {
+          overlay.parentNode.removeChild(overlay);
+        }
+      });
+    }
+  }
+
+  await expect(page.locator('.modal-overlay')).toHaveCount(0, { timeout: 10000 });
+}
+
+async function openAndValidateModal(page, actionName) {
+  const opened = await page.evaluate(async (action) => {
+    try {
+      const fn = action.split('.').reduce((acc, key) => (acc ? acc[key] : null), window);
+      if (typeof fn !== 'function') return false;
+      const result = fn.call(action.startsWith('window.') ? window : undefined);
+      if (result && typeof result.then === 'function') {
+        await result;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }, actionName);
+
+  if (!opened) return false;
+
+  await expect(page.locator('.modal-overlay')).toBeVisible({ timeout: 10000 });
+  await closeAnyModal(page);
+  return true;
+}
+
 test.describe('E2E - Todos los módulos', () => {
   test('navega todos los módulos sin errores JS ni 5xx', async ({ page }) => {
     const jsErrors = [];
@@ -193,6 +239,63 @@ test.describe('E2E - Todos los módulos', () => {
     for (const moduleName of MODULES) {
       await openModule(page, moduleName);
     }
+
+    expect(jsErrors, `Errores JS detectados:\n${jsErrors.join('\n')}`).toEqual([]);
+    expect(serverErrors, `Respuestas 5xx detectadas:\n${serverErrors.join('\n')}`).toEqual([]);
+  });
+
+  test('ejecuta acciones funcionales base por módulo crítico', async ({ page }) => {
+    const jsErrors = [];
+    const serverErrors = [];
+
+    page.on('pageerror', (error) => {
+      jsErrors.push(String(error));
+    });
+
+    page.on('response', (response) => {
+      const url = response.url();
+      if (url.includes('/api/') && response.status() >= 500) {
+        serverErrors.push(`${response.status()} ${url}`);
+      }
+    });
+
+    await login(page);
+
+    await openModule(page, 'branches');
+    await openAndValidateModal(page, 'window.Branches.showAddBranchForm');
+
+    await openModule(page, 'inventory');
+    await openAndValidateModal(page, 'window.Inventory.showAddForm');
+
+    await openModule(page, 'customers');
+    await openAndValidateModal(page, 'window.Customers.showAddForm');
+
+    await openModule(page, 'employees');
+    await openAndValidateModal(page, 'window.Employees.showAddEmployeeForm');
+
+    await openModule(page, 'cash');
+    await openAndValidateModal(page, 'window.Cash.showMovementForm');
+
+    await openModule(page, 'repairs');
+    await openAndValidateModal(page, 'window.Repairs.showAddForm');
+
+    await openModule(page, 'reports');
+    await expect(page.locator('#module-content')).toContainText(/reporte|captura|resumen/i, { timeout: 10000 });
+
+    await openModule(page, 'settings');
+    await expect(page.locator('#module-content')).toContainText(/configuración|sistema|mantenimiento/i, { timeout: 10000 });
+
+    await openModule(page, 'dashboard');
+    await expect(page.locator('#module-content')).toContainText(/ventas|utilidad|resumen/i, { timeout: 10000 });
+
+    await openModule(page, 'catalogs');
+    await expect(page.locator('#module-content')).toContainText(/catálogo|vendedor|guía|agencia/i, { timeout: 10000 });
+
+    await openModule(page, 'pos');
+    await expect(page.locator('#module-content')).toContainText(/venta|carrito|pago/i, { timeout: 10000 });
+
+    await openModule(page, 'sync');
+    await expect(page.locator('#module-content')).toContainText(/sincron|pendiente|estado/i, { timeout: 10000 });
 
     expect(jsErrors, `Errores JS detectados:\n${jsErrors.join('\n')}`).toEqual([]);
     expect(serverErrors, `Respuestas 5xx detectadas:\n${serverErrors.join('\n')}`).toEqual([]);
