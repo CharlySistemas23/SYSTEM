@@ -27,7 +27,6 @@ router.get('/agencies', async (req, res) => {
     const params = [];
     let paramCount = 1;
 
-    // ✅ NUEVO: Filtrar por sucursal del usuario si no es master_admin
     if (!req.user?.isMasterAdmin && req.user?.branchId) {
       sql += ` AND (branch_id = $${paramCount} OR branch_id IS NULL)`;
       params.push(req.user.branchId);
@@ -235,7 +234,6 @@ router.get('/guides', async (req, res) => {
     const params = [];
     let paramCount = 1;
 
-    // ✅ NUEVO: Filtrar por sucursal del usuario si no es master_admin
     if (!req.user?.isMasterAdmin && req.user?.branchId) {
       sql += ` AND (g.branch_id = $${paramCount} OR g.branch_id IS NULL)`;
       params.push(req.user.branchId);
@@ -455,7 +453,6 @@ router.get('/sellers', async (req, res) => {
     const params = [];
     let paramCount = 1;
 
-    // ✅ NUEVO: Filtrar por sucursal del usuario si no es master_admin
     if (!req.user?.isMasterAdmin && req.user?.branchId) {
       sql += ` AND (branch_id = $${paramCount} OR branch_id IS NULL)`;
       params.push(req.user.branchId);
