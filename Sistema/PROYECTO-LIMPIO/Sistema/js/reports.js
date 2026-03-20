@@ -12080,9 +12080,9 @@ const Reports = {
                     });
                     for (const cost of variableCosts) {
                         if (cost.category === 'comisiones_bancarias') {
-                            bankCommissions += (parseFloat(cost.amount) || 0);
+                            bankCommissions += (cost.amount || 0);
                         } else {
-                            variableCostsDaily += (parseFloat(cost.amount) || 0);
+                            variableCostsDaily += (cost.amount || 0);
                         }
                     }
                 }
