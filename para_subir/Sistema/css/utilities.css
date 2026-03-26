@@ -1,0 +1,64 @@
+/**
+ * Opal & Co - Utilities (reemplazo de Tailwind usado en el proyecto)
+ */
+
+/* Flex */
+.oc-flex { display: flex; }
+.oc-flex-col { flex-direction: column; }
+.oc-items-center { align-items: center; }
+.oc-justify-center { justify-content: center; }
+.oc-justify-between { justify-content: space-between; }
+.oc-flex-wrap { flex-wrap: wrap; }
+.oc-flex-1 { flex: 1; }
+.oc-gap-xs { gap: var(--space-xs); }
+.oc-gap-sm { gap: var(--space-sm); }
+.oc-gap-md { gap: var(--space-md); }
+.oc-gap-lg { gap: var(--space-lg); }
+
+/* Overflow / Display */
+.oc-overflow-hidden { overflow: hidden; }
+.overflow-hidden { overflow: hidden; }
+.oc-max-h-96 { max-height: 24rem; }
+.max-h-96 { max-height: 24rem; }
+.opacity-100 { opacity: 1; }
+.oc-block { display: block; }
+.oc-inline { display: inline; }
+.oc-hidden { display: none; }
+
+/* Transitions */
+.oc-transition-all {
+  transition-property: all;
+  transition-timing-function: ease-in-out;
+  transition-duration: 300ms;
+}
+.transition-all {
+  transition-property: all;
+  transition-timing-function: ease-in-out;
+  transition-duration: 300ms;
+}
+.oc-transition-transform {
+  transition-property: transform;
+  transition-timing-function: ease-in-out;
+  transition-duration: 300ms;
+}
+.transition-transform {
+  transition-property: transform;
+  transition-timing-function: ease-in-out;
+  transition-duration: 300ms;
+}
+.oc-duration-300 { transition-duration: 300ms; }
+.duration-300 { transition-duration: 300ms; }
+.oc-ease-in-out { transition-timing-function: ease-in-out; }
+.ease-in-out { transition-timing-function: ease-in-out; }
+
+/* Nav section items (Tailwind classes usadas actualmente) */
+.nav-section-items {
+  overflow: hidden;
+  transition: all 300ms ease-in-out;
+  max-height: 24rem;
+  opacity: 1;
+}
+
+.nav-section-chevron {
+  transition: transform 300ms ease-in-out;
+}
