@@ -50,6 +50,16 @@ let server;
 function proxyToRailway(req, res, pathname) {
   const targetPath = pathname.replace(/^\/proxy/, '') || '/';
   const targetUrl = new URL(RAILWAY_URL);
+  let responseFinalized = false;
+
+  const safeRespond = (statusCode, headers, payload) => {
+    if (responseFinalized || res.headersSent || res.writableEnded || res.destroyed) {
+      return;
+    }
+    responseFinalized = true;
+    res.writeHead(statusCode, headers);
+    res.end(payload);
+  };
 
   const headers = { ...req.headers };
   delete headers.host;
@@ -68,13 +78,39 @@ function proxyToRailway(req, res, pathname) {
   };
 
   const proxyReq = https.request(options, (proxyRes) => {
+    if (responseFinalized || res.headersSent || res.writableEnded || res.destroyed) {
+      proxyRes.resume();
+      return;
+    }
+    responseFinalized = true;
     res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
     proxyRes.pipe(res);
+
+    proxyRes.on('error', () => {
+      if (!res.destroyed) {
+        res.destroy();
+      }
+    });
   });
 
   proxyReq.on('error', () => {
-    res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ error: 'No se pudo conectar con Railway' }));
+    safeRespond(
+      502,
+      { 'Content-Type': 'application/json; charset=utf-8' },
+      JSON.stringify({ error: 'No se pudo conectar con Railway' })
+    );
+  });
+
+  req.on('aborted', () => {
+    if (!proxyReq.destroyed) {
+      proxyReq.destroy();
+    }
+  });
+
+  req.on('error', () => {
+    if (!proxyReq.destroyed) {
+      proxyReq.destroy();
+    }
   });
 
   req.pipe(proxyReq);
